@@ -1,0 +1,16 @@
+# El motor de voz. Sin faster-whisper a proposito: se importa de forma diferida, asi
+# que con Deepgram configurado nunca se carga y se ahorran ~1 GB de ctranslate2+onnx.
+# Si se quiere el respaldo local de reconocimiento: pip install faster-whisper
+anthropic>=0.40
+fastapi>=0.110
+# Los webhooks del carrier llegan como formulario, y FastAPI no los sabe leer
+# sin esto: sin ella, toda llamada entrante muere con un 500. Django lo hacia
+# de serie, asi que es una dependencia que solo aparece al salir de el.
+python-multipart>=0.0.9
+uvicorn[standard]>=0.30
+httpx>=0.27
+requests>=2.31
+# edge-tts es el respaldo de voz cuando no hay clave de Cartesia. `av` es lo que le
+# permite convertir su MP3: sin el no queda ningun respaldo de voz.
+edge-tts>=6.1
+av>=11

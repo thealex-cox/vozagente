@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Asistente de voz — demo</title>
+<link rel="stylesheet" href="/estatico/demo.css?v1.1">
+</head>
+<body>
+<main class="app">
+  <header class="cabecera">
+    <h1 id="titulo">Asistente de voz</h1>
+    <p class="sub" id="subtitulo">Demostración por navegador. Hable con normalidad: el asistente detecta cuándo termina de hablar.</p>
+  </header>
+
+  <section class="panel">
+    <div class="controles">
+      <button id="boton" class="boton" type="button">Iniciar conversación</button>
+      <label class="campo">
+        <span>Idioma</span>
+        <select id="idioma">
+          <option value="es" selected>Español</option>
+          <option value="en">English</option>
+        </select>
+      </label>
+      <label class="campo campo-check">
+        <input type="checkbox" id="tecnico">
+        <span>Modo técnico</span>
+      </label>
+    </div>
+
+    <div class="estado" id="estado" data-valor="inactivo">
+      <span class="punto"></span>
+      <span id="estado-texto">Sin conectar</span>
+      <span class="nivel"><i id="nivel"></i></span>
+      <span class="nivel-num" id="nivel-num" data-pasa="no"></span>
+    </div>
+  </section>
+
+  <section class="conversacion" id="conversacion" aria-live="polite"></section>
+
+  <p class="aviso" id="aviso" hidden></p>
+</main>
+<script src="/estatico/demo.js?v1.2"></script>
+</body>
+</html>

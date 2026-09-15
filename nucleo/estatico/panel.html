@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Panel del agente de voz</title>
+<link rel="stylesheet" href="/panel-estatico/panel.css?v1.1">
+</head>
+<body>
+
+<header class="cabecera">
+  <div class="cabecera-fila">
+    <h1 id="titulo">Panel</h1>
+    <a class="boton-enlace" href="/" target="_blank">Abrir la demo por voz</a>
+  </div>
+  <div class="estado" id="estado-servicio">Comprobando…</div>
+</header>
+
+<nav class="pestanas">
+  <button type="button" class="pestana activa" data-panel="p-negocio">Negocio</button>
+  <button type="button" class="pestana" data-panel="p-guiones">Guiones</button>
+  <button type="button" class="pestana" data-panel="p-claves">Claves y telefonía</button>
+  <button type="button" class="pestana" data-panel="p-llamadas">Llamadas</button>
+  <button type="button" class="pestana" data-panel="p-pedidos">Pedidos <span class="contador" id="contador-pedidos" hidden></span></button>
+</nav>
+
+<main>
+
+  <section id="p-negocio" class="panel activa">
+    <h2>El negocio</h2>
+    <p class="ayuda">Lo que el agente sabe. Fuera de esto no sabe nada, así que
+      conviene incluir también lo que <strong>no</strong> sabe y debe pasar a una
+      persona: sin eso, ante una pregunta que el guion no cubre, se lo inventa.</p>
+
+    <div class="campo">
+      <label for="negocio-nombre">Nombre</label>
+      <input type="text" id="negocio-nombre" placeholder="El nombre que dice en voz alta">
+      <small>Se usa en el saludo y se le pasa al reconocedor para que no lo destroce.</small>
+    </div>
+
+    <div class="campo">
+      <label for="negocio-idioma">Idioma</label>
+      <select id="negocio-idioma">
+        <option value="es">Español</option>
+        <option value="en">Inglés</option>
+      </select>
+      <small>Cambiarlo exige reiniciar el servicio: la voz se elige al arrancar la llamada.</small>
+    </div>
+
+    <div class="campo">
+      <label for="negocio-descripcion">Qué debe saber</label>
+      <textarea id="negocio-descripcion" rows="14"
+        placeholder="Qué vende, horarios, cómo funcionan los encargos, qué derivar a una persona."></textarea>
+    </div>
+
+    <div class="campo">
+      <label for="negocio-vocabulario">Palabras difíciles</label>
+      <input type="text" id="negocio-vocabulario"
+        placeholder="tres leches, selva negra">
+      <small>Separadas por comas. Para el reconocedor, no para el agente: nombres
+        propios y términos que oirá y que sin ayuda transcribe mal.</small>
+    </div>
+  </section>
+
+  <section id="p-guiones" class="panel">
+    <h2>Guiones</h2>
+    <p class="ayuda">El <strong>saludo</strong> se dice literal, tal cual está escrito.
+      El <strong>guion</strong> son instrucciones que el agente lee y redacta con sus
+      palabras, así que dos llamadas no suenan idénticas. Para forzar una frase exacta,
+      escribe <code>Di exactamente: "…"</code>.</p>
+    <p class="ayuda">Se releen en cada llamada: guardas y la siguiente ya lo usa.</p>
+
+    <h3>Cuando llaman al negocio</h3>
+    <div class="campo">
+      <label for="saludo-entrante">Saludo</label>
+      <textarea id="saludo-entrante" rows="2"
+        placeholder="Vacío: se compone solo con el nombre del negocio."></textarea>
+    </div>
+    <div class="campo">
+      <label for="guion-entrante">Guion</label>
+      <textarea id="guion-entrante" rows="12"></textarea>
+    </div>
+
+    <h3>Cuando el negocio llama</h3>
+    <div class="campo">
+      <label for="saludo-saliente">Saludo</label>
+      <textarea id="saludo-saliente" rows="2"
+        placeholder="Vacío: se compone solo con el nombre del negocio."></textarea>
+    </div>
+    <div class="campo">
+      <label for="guion-saliente">Guion</label>
+      <textarea id="guion-saliente" rows="12"></textarea>
+    </div>
+  </section>
+
+  <section id="p-claves" class="panel">
+    <h2>Claves y telefonía</h2>
+    <p class="ayuda">Están guardadas en texto plano en <code id="ruta-config"></code>.
+      Esta pantalla sólo se abre desde esta máquina.</p>
+
+    <h3>Inteligencia y voz</h3>
+    <div class="campo" data-secreto>
+      <label for="ia-anthropic">Clave de Claude</label>
+      <div class="fila-secreto">
+        <input type="password" id="ia-anthropic" autocomplete="off" spellcheck="false">
+      </div>
+      <small>Sin ella el agente no puede pensar.</small>
+    </div>
+
+    <div class="campo">
+      <label for="ia-modelo">Modelo</label>
+      <input type="text" id="ia-modelo" spellcheck="false">
+    </div>
+
+    <div class="campo" data-secreto>
+      <label for="ia-deepgram">Clave de Deepgram</label>
+      <div class="fila-secreto">
+        <input type="password" id="ia-deepgram" autocomplete="off" spellcheck="false">
+      </div>
+      <small>Es quien entiende al cliente. Sin ella se usa Whisper local, que sobre
+        audio telefónico entiende bastante peor.</small>
+    </div>
+
+    <div class="campo" data-secreto>
+      <label for="ia-cartesia">Clave de Cartesia</label>
+      <div class="fila-secreto">
+        <input type="password" id="ia-cartesia" autocomplete="off" spellcheck="false">
+      </div>
+      <small>Es la voz. Sin ella tarda ~1,9 s en empezar cada frase y por teléfono se
+        oye como una línea muerta.</small>
+    </div>
+
+    <div class="dos-columnas">
+      <div class="campo">
+        <label for="ia-voz-es">Voz en español</label>
+        <input type="text" id="ia-voz-es" spellcheck="false">
+      </div>
+      <div class="campo">
+        <label for="ia-voz-en">Voz en inglés</label>
+        <input type="text" id="ia-voz-en" spellcheck="false">
+      </div>
+    </div>
+
+    <h3>Telefonía</h3>
+    <div class="dos-columnas">
+      <div class="campo">
+        <label for="carrier-proveedor">Proveedor</label>
+        <select id="carrier-proveedor">
+          <option value="signalwire">SignalWire</option>
+          <option value="twilio">Twilio</option>
+        </select>
+      </div>
+      <div class="campo">
+        <label for="carrier-space">Space <span class="solo-sw">(SignalWire)</span></label>
+        <input type="text" id="carrier-space" spellcheck="false"
+          placeholder="tuespacio.signalwire.com">
+      </div>
+    </div>
+
+    <div class="campo" data-secreto>
+      <label for="carrier-project">Project ID</label>
+      <div class="fila-secreto">
+        <input type="password" id="carrier-project" autocomplete="off" spellcheck="false">
+      </div>
+    </div>
+
+    <div class="campo" data-secreto>
+      <label for="carrier-token">Token del proveedor</label>
+      <div class="fila-secreto">
+        <input type="password" id="carrier-token" autocomplete="off" spellcheck="false">
+      </div>
+    </div>
+
+    <div class="campo">
+      <label for="carrier-numero">Número desde el que se llama</label>
+      <input type="text" id="carrier-numero" spellcheck="false" placeholder="+593999123456">
+      <small>Tiene que ser un número de la cuenta del proveedor, o rechaza la llamada.</small>
+    </div>
+
+    <h3>Cómo llega el proveedor hasta aquí</h3>
+    <p class="ayuda">Con un túnel, estas dos URL <strong>caducan cada vez que se
+      reinicia</strong>: es la causa número uno de «marca y no dice nada».</p>
+
+    <div class="campo">
+      <label for="web-publica">URL pública</label>
+      <input type="text" id="web-publica" spellcheck="false"
+        placeholder="https://loquesea.trycloudflare.com">
+    </div>
+
+    <div class="campo">
+      <label for="web-stream">URL del audio</label>
+      <input type="text" id="web-stream" spellcheck="false"
+        placeholder="wss://loquesea.trycloudflare.com/twilio">
+    </div>
+
+    <div class="campo" data-secreto>
+      <label for="web-token">Secreto compartido</label>
+      <div class="fila-secreto">
+        <input type="password" id="web-token" autocomplete="off" spellcheck="false">
+      </div>
+      <small>Autentica el audio y los webhooks. Si lo cambias, hay que reescribir la
+        URL del número en la consola del proveedor: acaba en
+        <code>/entrante?t=&lt;este secreto&gt;</code>.</small>
+    </div>
+
+    <h3>Enseñarlo desde fuera</h3>
+    <p class="ayuda">Sin clave, el servicio sólo se abre desde esta máquina: los
+      webhooks del proveedor siguen entrando, pero la demo y este panel no. Con clave,
+      cualquiera que tenga el enlace entra — así que ponla larga y no la publiques.</p>
+
+    <div class="campo" data-secreto>
+      <label for="web-clave">Clave de acceso</label>
+      <div class="fila-secreto">
+        <input type="password" id="web-clave" autocomplete="off" spellcheck="false"
+          placeholder="Vacío: sólo desde esta máquina">
+      </div>
+      <small>No es una contraseña de verdad: es una frase para enseñar el producto
+        unos días sin dejarlo abierto.</small>
+    </div>
+
+    <div id="enlaces-compartir" class="enlaces" hidden>
+      <p class="etiqueta-enlaces">Enlaces para compartir</p>
+      <div class="campo">
+        <label for="enlace-demo">Hablar con el agente</label>
+        <div class="fila-secreto">
+          <input type="text" id="enlace-demo" readonly spellcheck="false">
+        </div>
+      </div>
+      <div class="campo">
+        <label for="enlace-panel">Este panel</label>
+        <div class="fila-secreto">
+          <input type="text" id="enlace-panel" readonly spellcheck="false">
+        </div>
+      </div>
+    </div>
+
+    <h3>Cuándo se puede llamar</h3>
+    <p class="ayuda">La franja es la del <strong>destinatario</strong>, no la tuya. Esto
+      sólo puede estrechar lo que la ley permite, nunca ampliarlo.</p>
+    <div class="dos-columnas">
+      <div class="campo">
+        <label for="llamadas-inicio">Desde (hora)</label>
+        <input type="number" id="llamadas-inicio" min="0" max="23">
+      </div>
+      <div class="campo">
+        <label for="llamadas-fin">Hasta (hora)</label>
+        <input type="number" id="llamadas-fin" min="0" max="23">
+      </div>
+    </div>
+  </section>
+
+  <section id="p-llamadas" class="panel">
+    <h2>Llamadas</h2>
+
+    <div class="marcar">
+      <input type="text" id="marcar-numero" placeholder="+593999123456" spellcheck="false">
+      <button type="button" id="marcar" class="boton-principal">Llamar ahora</button>
+      <span class="ayuda-inline">Marca al instante, a cualquier hora. Cuesta dinero.</span>
+    </div>
+
+    <div class="listado" id="listado-llamadas">
+      <p class="vacio">Cargando…</p>
+    </div>
+
+    <div class="conversacion" id="conversacion" hidden></div>
+  </section>
+
+  <section id="p-pedidos" class="panel">
+    <h2>Pedidos</h2>
+    <p class="ayuda">Lo que el agente ha apuntado durante las llamadas. Es lo único
+      que puede guardar: no consulta nada ni cambia nada más.</p>
+    <div class="listado" id="listado-pedidos">
+      <p class="vacio">Cargando…</p>
+    </div>
+  </section>
+
+</main>
+
+<footer class="pie">
+  <button type="button" id="guardar" class="boton-principal">Guardar cambios</button>
+  <span id="aviso-guardado" class="aviso-guardado"></span>
+</footer>
+
+<script src="/panel-estatico/panel.js?v1.2"></script>
+</body>
+</html>
