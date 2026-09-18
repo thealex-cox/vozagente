@@ -9,6 +9,11 @@ pasa a ser el plan B.
 
 ## Diez minutos antes
 
+**0. Comprueba que PostgreSQL está arriba.** El registro y los ajustes viven ahí. Si
+el servicio de Postgres no arranca, el agente **sigue atendiendo llamadas** con la
+copia de `config.json` —eso está previsto— pero no guardará ni un pedido, que es
+justo el remate de la demo. El panel lo dice en ámbar arriba del todo si pasa.
+
 **1. Arranca el servicio.** En una terminal, dentro de `D:\skytech\vozagente`:
 
 ```
@@ -61,7 +66,7 @@ pásalo otra vez antes de empezar:
 
 ```
 .venv\Scripts\python.exe limpiar.py            dice qué hay, sin tocar nada
-.venv\Scripts\python.exe limpiar.py --hazlo    lo borra, dejando copia al lado
+.venv\Scripts\python.exe limpiar.py --hazlo    lo borra, dejando un volcado .sql al lado
 ```
 
 No toca las llamadas que tengan transcripción, así que el ensayo bueno se queda.
@@ -72,8 +77,12 @@ estado del proveedor—, se arregla preguntándole al proveedor cómo acabó:
 
 ```
 .venv\Scripts\python.exe conciliar.py          dice qué corregiría, sin tocar nada
-.venv\Scripts\python.exe conciliar.py --hazlo  lo escribe, dejando copia al lado
+.venv\Scripts\python.exe conciliar.py --hazlo  lo escribe, dejando un volcado .sql al lado
 ```
+
+> Los dos hacen su copia con `pg_dump`, no copiando un fichero: **el registro vive
+> ahora en PostgreSQL**, no en `llamadas.db`. El `llamadas.db` que sigue en la carpeta
+> es la copia de antes de migrar y no lo lee nadie.
 
 **6. Haz una llamada tú.** Marca al `+1 208 398 6190` desde tu celular y haz el
 encargo entero una vez. No lo despaches con un «hola»: **este ensayo es tu plan B**, y
@@ -98,6 +107,14 @@ El paquete trae 30 minutos internacionales, pero CNT los cobra del saldo. Marcar
 
 Lo medido el día 8: la llamada más larga 2m18s sin cortes, primer audio entre 2,5 y
 3,3 segundos, respuestas siguientes en 1,2-1,4.
+
+**Las respuestas son más lentas ahora, y es a propósito.** Medido el 18: 0,7 s el
+saludo y entre 2,2 y 2,8 s las respuestas. El agente espera 1200 ms de silencio antes
+de dar tu turno por terminado, en vez de los 800 de antes. Con 800 cortaba a quien
+hace la pausa normal antes de decir un nombre —«...a nombre de» se enviaba a
+transcribir dos veces y el encargo se perdía entero—, y un encargo se toma dictando
+nombres. Si en el ensayo lo notas lento, se baja sin tocar código con la variable
+`VOZ_SILENCIO_FIN_MS`.
 
 ## La demostración, en tres minutos
 
@@ -126,14 +143,31 @@ desde el guion: es lo que se enseña si alguien reclama.
 > Quiero encargar una torta de selva negra para veinte personas, para el sábado, a
 > nombre de [su nombre].
 
-Dice «Un momento, lo anoto», guarda, y **sólo entonces** confirma. Cambia a la pestaña
-del panel, refresca, y ahí está el pedido con su nombre.
+Dice «Un momento, lo anoto», guarda, y **sólo entonces** confirma.
+
+**No hace falta refrescar el panel: el pedido aparece solo.** Ten la pestaña de Pedidos
+a la vista mientras hablas y déjala en pantalla — se actualiza cada tres segundos. Y
+arriba, en la cabecera, hay una franja roja con **la llamada en curso y lo último que
+se ha dicho**, que se ve desde cualquier pestaña. Un clic en ella abre la conversación
+entera.
 
 Ese es el momento de la demo. Todo lo anterior lo hace cualquier chatbot; esto es lo
 que convierte una conversación en trabajo hecho.
 
+**Y al despedirte, cuelga él.** Di «gracias, nada más» y espera: se despide y corta la
+llamada a los dos o tres segundos. No cuelgues tú — que cuelgue el agente delante de
+todos es mejor de lo que parece, porque la pregunta siguiente suele ser «¿y se queda la
+línea abierta gastando?».
+
 **Si te sobra tiempo**, cambia el encargo a mitad («mejor cheesecake y para cuarenta»)
-y enseña que el pedido viejo queda marcado como cambiado, no duplicado.
+y enseña que el pedido viejo queda marcado como cambiado, no duplicado. O pincha
+cualquier fila de Pedidos: se abre una ficha con el encargo **y la conversación de la
+que salió**, que es la respuesta a «¿y cómo sé que dijo eso?».
+
+Y si quien escucha es técnico, el dato que le va a interesar es dónde queda todo eso:
+es una base PostgreSQL normal, la tabla `pedido`, consultable desde cualquier
+herramienta. No hay que integrarse con nada nuestro para sacar los encargos. **Pero no
+abras la tabla `ajuste`** — ahí están las claves.
 
 ## Lo que va a preguntar tu jefe
 
@@ -148,8 +182,10 @@ los 78 dólares al mes. Ése es el camino cuando haya un cliente. Hasta entonces
 desvío desde la línea de Ecuador hace el mismo papel y no cuesta papeleo.
 
 **«¿Cuánto tarda en contestar?»**
-El primer audio entre dos y tres segundos; las respuestas siguientes, entre 1,2 y 1,4.
-Medido en las llamadas del día 8, no estimado.
+El saludo sale por debajo del segundo; las respuestas, entre 2,2 y 2,8 segundos.
+Medido en llamadas reales, no estimado. De esos segundos, 1,2 son espera deliberada:
+es lo que aguanta antes de dar por terminado lo que estás diciendo, y bajarlo hace que
+corte a quien duda a mitad de frase. Es un ajuste, no un límite técnico.
 
 **«¿Cuánto cuesta cada llamada?»**
 En telefonía, **las seis llamadas del día 8 costaron 9,6 centavos en total** —eso es lo
@@ -175,7 +211,10 @@ el negocio, y eso es trabajo aparte para cada cliente.
 |---|---|
 | La llamada se cae al descolgar | El webhook del número no apunta al túnel de ahora, o le falta el `?t=` |
 | Se corta a mitad, a los 40 segundos | Saldo de CNT a cero. No es el agente |
+| **No da ni tono, ni suena** | No llegó al proveedor. Saldo de CNT, casi siempre. En el panel no habrá ni rastro, porque nunca entró |
 | Suena y no contesta nadie | El servicio se cerró, o el túnel se cayó. Mira la terminal |
+| Conversa bien pero no aparece el pedido | PostgreSQL. El panel lo dice en ámbar arriba |
+| **Te corta a media frase** | Sube `VOZ_SILENCIO_FIN_MS` (está en 1200) y reinicia |
 | Por navegador, el agente no responde | Mira el número junto a la barra. Si no se mueve, es el micrófono |
 | Por navegador, «No se pudo conectar» | El servicio se cerró. Vuelve a arrancarlo |
 | Suena entrecortado | Red. Cuelga y vuelve a llamar |
@@ -187,7 +226,9 @@ Enseñar una conversación leída no es lo mismo, pero se entiende.
 
 ## Lo que NO conviene enseñar
 
-- **La pestaña de Claves** con el proyector encendido: son las claves de verdad.
+- **La pestaña de Claves** con el proyector encendido: son las claves de verdad. Y
+  desde que los ajustes están en PostgreSQL, tampoco conviene abrir la tabla `ajuste`
+  en pgAdmin delante de nadie: las claves están ahí dentro, en claro.
 - **Marcar tú a un móvil ecuatoriano** delante de todos. La saliente a Ecuador no está
   probada con esta cuenta —la que dio el error 30006 en agosto era la personal, en
   Trial, y no es ésta— y además cuesta cincuenta veces más que recibir. Si te lo piden,
