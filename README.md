@@ -133,7 +133,8 @@ tortas y por porciones, asi que con otro negocio cargado fallan por hablar de lo
 no es. Al montar un cliente nuevo hay que reescribirles las frases; lo que se comprueba
 —las tres trampas de arriba— vale para cualquier sector.
 
-Para la reunion, ver `DEMO.md`.
+Para la reunion, ver `DEMO.md`. Para entregarle esto a alguien que va a tocar el
+codigo, `ENTREGA.md`: que herramientas se usan, como esta montado y por que.
 
 ## Probar sin gastar una llamada
 
