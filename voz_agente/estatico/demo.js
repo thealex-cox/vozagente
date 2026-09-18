@@ -175,6 +175,13 @@
           ponerEstado('escuchando', 'No se entendió nada, inténtelo de nuevo');
         }
         cerrarTurnoSiProcede();
+      } else if (datos.tipo === 'terminada') {
+        // El agente se despidio y colgo. Por telefono se corta la linea; aqui se
+        // deja la conversacion a la vista y se cierra el turno, para que el audio
+        // de la despedida acabe de sonar en vez de quedarse a medias.
+        turnoCerrado = true;
+        cerrarTurnoSiProcede();
+        ponerEstado('inactivo', 'El asistente dio la conversación por terminada');
       } else if (datos.tipo === 'error') {
         burbuja('turno-error', null, datos.mensaje);
         ponerEstado('error', 'Error');

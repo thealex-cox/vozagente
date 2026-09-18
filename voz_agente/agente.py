@@ -181,6 +181,14 @@ class AgenteVoz:
                 break
             self.historial.append({'role': 'user', 'content': self._ejecutar(usos)})
 
+            # Una herramienta terminal cierra el turno aqui. Dejar que el modelo
+            # conteste al `tool_result` le daria una segunda despedida encima de la
+            # que acaba de decir, y esa segunda ya sonaria con la linea cerrandose.
+            # El `tool_result` se anade antes de salir: un `tool_use` sin su
+            # resultado deja el historial invalido.
+            if getattr(self.herramientas, 'conversacion_terminada', False):
+                break
+
         return ' '.join(dicho)
 
     def _responder(self, system, extra, al_completar_frase, inicio):

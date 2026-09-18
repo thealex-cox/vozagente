@@ -4,16 +4,33 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Panel del agente de voz</title>
-<link rel="stylesheet" href="/panel-estatico/panel.css?v1.1">
+<link rel="stylesheet" href="/panel-estatico/panel.css?v2.1">
 </head>
 <body>
 
 <header class="cabecera">
   <div class="cabecera-fila">
-    <h1 id="titulo">Panel</h1>
+    <div class="cabecera-quien">
+      <h1 id="titulo">Panel</h1>
+      <!-- El número al que llaman los clientes. Estaba sólo en config.json y no
+           salía por ningún lado: es el dato que se dicta en voz alta en una reunión
+           y el que hay que mirar para saber si el panel es el del número correcto. -->
+      <span class="cabecera-numero" id="cabecera-numero" hidden></span>
+    </div>
     <a class="boton-enlace" href="/" target="_blank">Abrir la demo por voz</a>
   </div>
   <div class="estado" id="estado-servicio">Comprobando…</div>
+
+  <!-- Una llamada sonando es estado de todo el servicio, no contenido de una
+       pestaña: va en la cabecera para verla desde Pedidos, que es donde se está
+       mirando mientras se espera que caiga el encargo. -->
+  <button type="button" class="en-vivo" id="en-vivo" hidden>
+    <span class="punto-vivo"></span>
+    <strong>Llamada en curso</strong>
+    <span class="detalle" id="en-vivo-quien"></span>
+    <span class="en-vivo-ultimo" id="en-vivo-ultimo"></span>
+    <span class="en-vivo-abrir">ver la conversación &rsaquo;</span>
+  </button>
 </header>
 
 <nav class="pestanas">
@@ -172,9 +189,19 @@
     </div>
 
     <div class="campo">
-      <label for="carrier-numero">Número desde el que se llama</label>
+      <label for="carrier-entrante">Número del negocio <span class="detalle">(al que llaman los clientes)</span></label>
+      <input type="text" id="carrier-entrante" spellcheck="false" placeholder="+1208XXXXXXX">
+      <small>El que se da a los clientes. Si compras otro, cámbialo aquí y <strong>vuelve
+        a pasar <code>apuntar.py</code></strong>: guardar aquí no repunta el webhook en el
+        proveedor, y sin ese paso la llamada entra y se cae al descolgar.</small>
+    </div>
+
+    <div class="campo">
+      <label for="carrier-numero">Número desde el que se llama <span class="detalle">(salientes)</span></label>
       <input type="text" id="carrier-numero" spellcheck="false" placeholder="+593999123456">
-      <small>Tiene que ser un número de la cuenta del proveedor, o rechaza la llamada.</small>
+      <small>Con qué identificador salen las llamadas que hace el agente. Tiene que ser
+        un número de la cuenta del proveedor, o rechaza la llamada. No hace falta que
+        sea el mismo de arriba.</small>
     </div>
 
     <h3>Cómo llega el proveedor hasta aquí</h3>
@@ -261,14 +288,14 @@
     <div class="listado" id="listado-llamadas">
       <p class="vacio">Cargando…</p>
     </div>
-
-    <div class="conversacion" id="conversacion" hidden></div>
   </section>
 
   <section id="p-pedidos" class="panel">
     <h2>Pedidos</h2>
     <p class="ayuda">Lo que el agente ha apuntado durante las llamadas. Es lo único
-      que puede guardar: no consulta nada ni cambia nada más.</p>
+      que puede guardar: no consulta nada ni cambia nada más.
+      <span class="pulso-vivo" id="pulso-vivo" hidden>actualizando solo</span></p>
+
     <div class="listado" id="listado-pedidos">
       <p class="vacio">Cargando…</p>
     </div>
@@ -276,11 +303,30 @@
 
 </main>
 
-<footer class="pie">
-  <button type="button" id="guardar" class="boton-principal">Guardar cambios</button>
-  <span id="aviso-guardado" class="aviso-guardado"></span>
+<div class="modal-fondo" id="modal-fondo" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-titulo">
+    <header class="modal-cabecera">
+      <h3 id="modal-titulo">Pedido</h3>
+      <button type="button" class="modal-cerrar" id="modal-cerrar"
+              aria-label="Cerrar">&times;</button>
+    </header>
+    <div class="modal-cuerpo" id="modal-cuerpo"></div>
+  </div>
+</div>
+
+<!-- Los avisos salen aquí, uno debajo de otro y cada uno con su aspa. Antes eran un
+     hueco fijo en el pie que se borraba solo a los seis segundos: si estabas
+     mirando otra parte de la pantalla, el mensaje se perdía sin que lo leyeras. -->
+<div class="avisos" id="avisos" aria-live="polite"></div>
+
+<footer class="pie" id="pie">
+  <div class="pie-fila">
+    <span class="pie-estado" id="pie-estado">Sin cambios sin guardar</span>
+    <button type="button" id="descartar" class="boton-secundario" hidden>Descartar</button>
+    <button type="button" id="guardar" class="boton-principal" disabled>Guardar cambios</button>
+  </div>
 </footer>
 
-<script src="/panel-estatico/panel.js?v1.2"></script>
+<script src="/panel-estatico/panel.js?v2.1"></script>
 </body>
 </html>

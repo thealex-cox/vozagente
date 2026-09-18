@@ -20,6 +20,22 @@ python -m venv .venv
 copy config.example.json config.json            # Linux: cp
 ```
 
+Hace falta un **PostgreSQL** al que conectarse (vale el local de toda la vida) y poner
+sus datos en la sección `bd` de `config.json`. La base se crea sola la primera vez que
+se pasa `migrar_a_postgres.py`; si se prefiere a mano, basta un `CREATE DATABASE
+vozagente` desde pgAdmin y el resto —las tablas— lo monta el servicio al arrancar.
+
+Quien venga de una versión anterior, que tenía el registro en un `llamadas.db` de
+SQLite, lo pasa con:
+
+```bash
+.venv\Scripts\python.exe migrar_a_postgres.py            # dice qué copiaría
+.venv\Scripts\python.exe migrar_a_postgres.py --hazlo    # lo copia
+```
+
+Conserva los identificadores —un pedido apunta a su llamada por id— y **no borra el
+`llamadas.db`**: mientras exista, volver atrás es cambiar el `almacen.py`.
+
 Luego se arranca y se configura desde el panel:
 
 ```bash
@@ -238,23 +254,29 @@ http://localhost:8600/llamadas          # las ultimas 50, en JSON
 http://localhost:8600/llamadas/7        # la conversacion, legible
 ```
 
-Todo va a `llamadas.db` (SQLite, se crea solo). La conversación se guarda **turno a
-turno**, no al colgar: una llamada que se corta o un reinicio dejarían la conversación
-entera sin registrar.
+Todo va a PostgreSQL, a la base que diga `bd` en `config.json`. Las tablas se crean
+solas; la base no, porque `CREATE DATABASE` necesita permisos que el servicio no
+tiene por qué tener —de eso se encarga `migrar_a_postgres.py`, o se crea a mano desde
+pgAdmin—. La conversación se guarda **turno a turno**, no al colgar: una llamada que se
+corta o un reinicio dejarían la conversación entera sin registrar.
+
+Se puede mirar desde pgAdmin mientras el agente escribe. Las tablas son `llamada`,
+`turno`, `evento`, `consumo`, `pedido` y `no_llamar`.
 
 ## Cómo está montado
 
 ```
 servidor.py      arranca todo (webhooks + puente de audio + demo)
 llamar.py        hace una llamada desde la terminal
-config.json      el negocio, las claves y las URL. No se versiona.
+config.json      el negocio, las claves, las URL y la base. No se versiona.
+migrar_a_postgres.py  pasa un llamadas.db antiguo a PostgreSQL. Se usa una vez.
 
 nucleo/          lo propio de este producto
   ajustes.py     lee y escribe config.json
   negocio.py     compone saludo y contexto: quien es el agente
   telefono.py    E.164, pais y franja horaria legal
   carrier.py     habla con SignalWire o Twilio
-  almacen.py     el registro, en SQLite
+  almacen.py     el registro, en PostgreSQL
   web.py         los webhooks del operador
   panel.py       el panel y su API, cerrados a lo que no sea local
   estatico/      la pagina del panel
@@ -277,7 +299,7 @@ parecido**, fichero a fichero, para poder comparar los dos árboles y portar arr
 en un sentido o en otro. Lo que diverge lleva un comentario que dice por qué. Las tres
 divergencias reales:
 
-- **`bitacora.py`** escribe directo en SQLite. Allí el puente vivía en otro proceso sin
+- **`bitacora.py`** escribe directo en la base. Allí el puente vivía en otro proceso sin
   ORM y mandaba los turnos por HTTP; aquí es el mismo proceso, así que desaparecen el
   salto HTTP, su token y los fallos en que el audio va bien y la transcripción se
   pierde por un 403.

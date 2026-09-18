@@ -269,6 +269,44 @@ async def listar_pedidos(request: Request):
                          'pendientes': almacen.pedidos_pendientes()})
 
 
+@router.get('/api/vivo')
+async def vivo(request: Request):
+    """Lo que el panel refresca solo: pedidos y la llamada que esta sonando.
+
+    Una sola ruta y no tres, porque el navegador la pide cada pocos segundos: tres
+    sondeos serian tres conexiones a la base por vuelta, y esos milisegundos salen
+    del turno de la llamada que se esta atendiendo.
+    """
+    rechazo = _solo_local(request)
+    if rechazo is not None:
+        return rechazo
+    return JSONResponse({'error': False, **almacen.panorama_vivo()})
+
+
+@router.get('/api/pedidos/{pedido_id}')
+async def detalle_pedido(pedido_id: int, request: Request):
+    """Un pedido con la conversacion de la que salio.
+
+    La transcripcion va con el pedido porque la pregunta que se hace quien lo mira
+    es «¿esto es lo que el cliente dijo de verdad?», y la respuesta es la llamada.
+    """
+    rechazo = _solo_local(request)
+    if rechazo is not None:
+        return rechazo
+
+    datos = almacen.pedido(pedido_id)
+    if datos is None:
+        return JSONResponse({'error': True, 'mensaje': 'No existe ese pedido'},
+                            status_code=404)
+    llamada_id = datos.get('llamada_id')
+    return JSONResponse({
+        'error': False,
+        'pedido': datos,
+        'llamada': almacen.llamada(llamada_id) if llamada_id else None,
+        'turnos': almacen.turnos(llamada_id) if llamada_id else [],
+    })
+
+
 @router.post('/api/pedidos/{pedido_id}')
 async def atender_pedido(pedido_id: int, request: Request):
     """Marca un pedido como atendido, o lo devuelve a pendiente.

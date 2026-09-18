@@ -14,3 +14,7 @@ requests>=2.31
 # permite convertir su MP3: sin el no queda ningun respaldo de voz.
 edge-tts>=6.1
 av>=11
+# El registro de llamadas vive en PostgreSQL, para poder mirarlo desde pgAdmin. El
+# extra `binary` trae la libpq compilada: sin el, instalar esto en Windows exige
+# tener las cabeceras de Postgres y un compilador de C.
+psycopg[binary]>=3.1

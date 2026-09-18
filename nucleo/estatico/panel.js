@@ -23,6 +23,7 @@
     ['carrier-space', 'carrier', 'space'],
     ['carrier-project', 'carrier', 'project_id'],
     ['carrier-token', 'carrier', 'api_token'],
+    ['carrier-entrante', 'carrier', 'numero_entrante'],
     ['carrier-numero', 'carrier', 'numero_origen'],
     ['web-publica', 'web', 'url_publica'],
     ['web-stream', 'web', 'url_stream'],
@@ -35,10 +36,17 @@
   var NUMERICOS = ['llamadas-inicio', 'llamadas-fin'];
 
   var guardarBtn = document.getElementById('guardar');
-  var avisoGuardado = document.getElementById('aviso-guardado');
+  var descartarBtn = document.getElementById('descartar');
+  var pie = document.getElementById('pie');
+  var pieEstado = document.getElementById('pie-estado');
+  var avisos = document.getElementById('avisos');
   var estadoServicio = document.getElementById('estado-servicio');
+  var cabeceraNumero = document.getElementById('cabecera-numero');
   var listado = document.getElementById('listado-llamadas');
-  var conversacion = document.getElementById('conversacion');
+
+  // Lo que había en los campos la última vez que se cargó o se guardó. Es contra
+  // esto contra lo que se decide si hay cambios sin guardar.
+  var guardado = {};
 
   function texto(valor) {
     return valor === null || valor === undefined ? '' : String(valor);
@@ -50,16 +58,117 @@
     return d.innerHTML;
   }
 
+  /** Un aviso que se puede cerrar, y que no se lleva por delante al anterior.
+   *
+   * Antes era un hueco fijo en el pie: el mensaje nuevo pisaba al viejo y todos
+   * desaparecían solos a los seis segundos, así que un error que llegara mientras
+   * mirabas otra parte de la pantalla se perdía sin remedio. Ahora se apilan, cada
+   * uno lleva su aspa, y **los errores no se van solos**: un fallo que se borra
+   * antes de que lo leas es un fallo que no ha avisado de nada.
+   */
   function avisar(mensaje, esError) {
-    avisoGuardado.textContent = mensaje;
-    avisoGuardado.dataset.error = esError ? 'si' : 'no';
-    if (mensaje) {
-      clearTimeout(avisar.temporizador);
-      avisar.temporizador = setTimeout(function () {
-        avisoGuardado.textContent = '';
-      }, 6000);
+    if (!mensaje) { return null; }
+
+    var caja = document.createElement('div');
+    caja.className = 'aviso';
+    caja.dataset.tipo = esError ? 'error' : 'ok';
+    caja.setAttribute('role', esError ? 'alert' : 'status');
+
+    var cuerpo = document.createElement('span');
+    cuerpo.className = 'aviso-texto';
+    cuerpo.textContent = mensaje;
+
+    var cerrar = document.createElement('button');
+    cerrar.type = 'button';
+    cerrar.className = 'aviso-cerrar';
+    cerrar.title = 'Cerrar';
+    cerrar.setAttribute('aria-label', 'Cerrar aviso');
+    cerrar.innerHTML = '&times;';
+
+    var ido = false;
+    function quitar() {
+      if (ido) { return; }
+      ido = true;
+      caja.classList.remove('abierto');
+      setTimeout(function () {
+        if (caja.parentNode) { caja.parentNode.removeChild(caja); }
+      }, 200);
     }
+    cerrar.addEventListener('click', quitar);
+
+    caja.appendChild(cuerpo);
+    caja.appendChild(cerrar);
+    avisos.appendChild(caja);
+    void caja.offsetWidth;
+    caja.classList.add('abierto');
+
+    // Los buenos se van solos porque son confirmaciones y estorban; los errores se
+    // quedan hasta que alguien los cierra.
+    if (!esError) { setTimeout(quitar, 6000); }
+    return quitar;
   }
+
+  // ---- cambios sin guardar -------------------------------------------------
+  //
+  // El botón de guardar vivía al final de la página y había que bajar hasta él sin
+  // saber si quedaba algo por guardar. Ahora la barra va fija abajo y sólo se
+  // enciende cuando de verdad hay algo distinto de lo último que se cargó: un botón
+  // siempre disponible no dice nada, y uno que se enciende sí.
+
+  function instantanea() {
+    var foto = {};
+    CAMPOS.forEach(function (campo) {
+      var el = document.getElementById(campo[0]);
+      if (el) { foto[campo[0]] = el.value; }
+    });
+    return foto;
+  }
+
+  function hayCambios() {
+    var ahora = instantanea();
+    return Object.keys(ahora).some(function (k) { return ahora[k] !== guardado[k]; });
+  }
+
+  function refrescarPie() {
+    var sucio = hayCambios();
+    pie.dataset.sucio = sucio ? 'si' : 'no';
+    guardarBtn.disabled = !sucio;
+    descartarBtn.hidden = !sucio;
+    pieEstado.textContent = sucio
+      ? 'Hay cambios sin guardar'
+      : 'Todo guardado';
+  }
+
+  function fijarGuardado() {
+    guardado = instantanea();
+    refrescarPie();
+  }
+
+  function vigilarCampos() {
+    CAMPOS.forEach(function (campo) {
+      var el = document.getElementById(campo[0]);
+      if (!el) { return; }
+      el.addEventListener('input', refrescarPie);
+      el.addEventListener('change', refrescarPie);
+    });
+  }
+
+  descartarBtn.addEventListener('click', function () {
+    CAMPOS.forEach(function (campo) {
+      var el = document.getElementById(campo[0]);
+      if (el && campo[0] in guardado) { el.value = guardado[campo[0]]; }
+    });
+    refrescarPie();
+    avisar('Se han descartado los cambios.');
+  });
+
+  // Cerrar la pestaña con la mitad de un guion escrito y perderlo es el tipo de
+  // fallo que no deja rastro y nadie sabe explicar después.
+  window.addEventListener('beforeunload', function (ev) {
+    if (!hayCambios()) { return; }
+    ev.preventDefault();
+    ev.returnValue = '';
+  });
 
   // ---- campos secretos: ver, copiar, pegar --------------------------------
 
@@ -178,10 +287,19 @@
     var ruta = document.getElementById('ruta-config');
     if (ruta) { ruta.textContent = datos.ruta || 'config.json'; }
 
+    // El número del negocio, en la cabecera y en todas las pestañas: es el que se
+    // dicta en voz alta y el que dice si este panel es el del número que crees.
+    var numero = ((config.carrier || {}).numero_entrante || '').trim();
+    cabeceraNumero.textContent = numero ? 'Atiende en ' + numero : '';
+    cabeceraNumero.hidden = !numero;
+
     pintarEnlaces(datos.enlaces || {});
 
     pintarEstado(datos.bloqueos || [], datos.telefonia || [],
                  datos.avisos || []);
+
+    // Lo recien cargado es, por definicion, lo que hay guardado.
+    fijarGuardado();
   }
 
   function pintarEnlaces(enlaces) {
@@ -261,13 +379,17 @@
       body: JSON.stringify(recogerConfig())
     }).then(function (r) { return r.json(); })
       .then(function (d) {
-        guardarBtn.disabled = false;
-        if (d.error) { avisar(d.mensaje || 'No se pudo guardar.', true); return; }
+        if (d.error) {
+          refrescarPie();
+          avisar(d.mensaje || 'No se pudo guardar.', true);
+          return;
+        }
         pintarEstado(d.bloqueos || [], d.telefonia || [], d.avisos || []);
+        fijarGuardado();
         avisar('Guardado. Los guiones y las claves ya están activos; el idioma necesita reiniciar.');
       })
       .catch(function (ex) {
-        guardarBtn.disabled = false;
+        refrescarPie();
         avisar('No se pudo guardar: ' + ex.message, true);
       });
   });
@@ -298,7 +420,7 @@
     listado.innerHTML = html + '</tbody></table>';
 
     Array.prototype.forEach.call(listado.querySelectorAll('tr[data-id]'), function (fila) {
-      fila.addEventListener('click', function () { verConversacion(fila.dataset.id); });
+      fila.addEventListener('click', function () { abrirLlamada(fila.dataset.id); });
     });
   }
 
@@ -310,23 +432,56 @@
       });
   }
 
-  function verConversacion(id) {
-    fetch('/api/llamadas/' + id).then(function (r) { return r.json(); })
+  /** Los turnos de una conversación, en el formato que comparten el modal de una
+   *  llamada y el de un pedido. */
+  function pintarTurnos(turnos, conMetricas) {
+    if (!turnos.length) {
+      return '<p class="vacio">Sin conversación registrada.</p>';
+    }
+    var html = '';
+    turnos.forEach(function (t) {
+      var quien = t.rol === 'agente' ? 'Agente' : 'Cliente';
+      html += '<p class="turno" data-rol="' + escapar(t.rol) + '"><strong>' +
+        quien + ':</strong> ' + escapar(t.texto) +
+        (t.interrumpido ? ' <em>(interrumpido)</em>' : '') +
+        (conMetricas && t.latencia_ms
+          ? ' <span class="ms">' + t.latencia_ms + ' ms</span>' : '') +
+        '</p>';
+    });
+    return html;
+  }
+
+  // Antes la conversación se desplegaba debajo de la tabla y empujaba el contenido,
+  // asi que había que hacer scroll para leerla y volver a subir para elegir otra.
+  // El modal la pone encima, se cierra con Esc y deja la tabla donde estaba.
+  function abrirLlamada(id) {
+    mostrarModal();
+    modalTitulo.textContent = 'Llamada #' + id;
+    modalCuerpo.innerHTML = esqueleto();
+
+    fetch('/api/llamadas/' + id)
+      .then(function (r) {
+        if (!r.ok && r.status !== 404) { throw new Error('HTTP ' + r.status); }
+        return r.json();
+      })
       .then(function (d) {
-        if (d.error) { return; }
-        var html = '<h3>Llamada ' + id + '</h3>';
-        if (!d.turnos.length) {
-          html += '<p class="vacio">Sin conversación registrada.</p>';
+        if (d.error || d.detail) {
+          modalCuerpo.innerHTML = '<p class="vacio">' +
+            escapar(d.mensaje || d.detail || 'No se pudo leer la llamada.') + '</p>';
+          return;
         }
-        d.turnos.forEach(function (t) {
-          var quien = t.rol === 'agente' ? 'Agente' : 'Cliente';
-          html += '<p class="turno" data-rol="' + escapar(t.rol) + '"><strong>' +
-            quien + ':</strong> ' + escapar(t.texto) +
-            (t.interrumpido ? ' <em>(interrumpido)</em>' : '') +
-            (t.latencia_ms ? ' <span class="ms">' + t.latencia_ms + ' ms</span>' : '') +
-            '</p>';
-        });
-        if (d.eventos.length) {
+        var l = d.llamada || {};
+        var html = '<dl class="ficha">' +
+          '<dt>Cuándo</dt><dd>' +
+            escapar((l.creada_en || '').replace('T', ' ')) + '</dd>' +
+          '<dt>Dirección</dt><dd>' + escapar(l.direccion) + '</dd>' +
+          '<dt>Teléfono</dt><dd>' + (escapar(l.telefono) || '—') + '</dd>' +
+          '<dt>Estado</dt><dd>' + escapar(l.estado) + '</dd>' +
+          '<dt>Duración</dt><dd>' + (l.duracion_segundos || 0) + ' s</dd>' +
+          '</dl>';
+        html += '<h4>Conversación</h4><div class="conversacion-modal">' +
+          pintarTurnos(d.turnos || [], true) + '</div>';
+        if (d.eventos && d.eventos.length) {
           html += '<h4>Eventos</h4><ul class="eventos">';
           d.eventos.forEach(function (e) {
             html += '<li>' + escapar((e.creado_en || '').replace('T', ' ')) + ' — ' +
@@ -334,9 +489,11 @@
           });
           html += '</ul>';
         }
-        conversacion.innerHTML = html;
-        conversacion.hidden = false;
-        conversacion.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        modalCuerpo.innerHTML = html;
+      })
+      .catch(function (ex) {
+        modalCuerpo.innerHTML = '<p class="vacio">No se pudo leer la llamada (' +
+          escapar(ex.message) + ').</p>';
       });
   }
 
@@ -379,6 +536,9 @@
       p.classList.add('activa');
       document.getElementById(p.dataset.panel).classList.add('activa');
       if (p.dataset.panel === 'p-llamadas') { cargarLlamadas(); }
+      // Al entrar en Pedidos se refresca ya, sin esperar a la siguiente vuelta del
+      // sondeo: quien cambia de pestaña quiere ver lo de ahora, no lo de hace tres
+      // segundos.
       if (p.dataset.panel === 'p-pedidos') { cargarPedidos(); }
     });
   });
@@ -413,7 +573,8 @@
           '" data-atendido="' + (p.atendido ? '1' : '0') + '">' +
           (p.atendido ? 'Reabrir' : 'Atendido') + '</button>';
 
-      html += '<tr data-atendido="' + (p.atendido ? 'si' : 'no') + '">' +
+      html += '<tr data-atendido="' + (p.atendido ? 'si' : 'no') +
+        '" data-pedido="' + p.id + '" title="Ver el detalle y la conversación">' +
         '<td>' + p.id + '</td>' +
         '<td>' + escapar((p.creado_en || '').replace('T', ' ')) + '</td>' +
         '<td><strong>' + escapar(p.resumen) + '</strong>' +
@@ -439,16 +600,244 @@
       });
   }
 
-  function cargarPedidos() {
-    return fetch('/api/pedidos').then(function (r) { return r.json(); })
-      .then(function (d) { pintarPedidos(d.pedidos || [], d.pendientes || 0); })
+  // ---- llamada en curso, en vivo -------------------------------------------
+
+  var enVivo = document.getElementById('en-vivo');
+  var enVivoQuien = document.getElementById('en-vivo-quien');
+  var enVivoUltimo = document.getElementById('en-vivo-ultimo');
+  var llamadaEnCurso = null;
+
+  function pintarEnVivo(llamada, turnos) {
+    llamadaEnCurso = llamada;
+    if (!llamada) {
+      enVivo.hidden = true;
+      return;
+    }
+    enVivo.hidden = false;
+    enVivoQuien.textContent = (llamada.direccion === 'entrante' ? 'de ' : 'a ') +
+      (llamada.telefono || 'desconocido');
+
+    // En la cabecera sólo cabe lo último que se ha dicho; la conversación entera
+    // está a un clic. Poner más aquí empujaría hacia abajo la pestaña que se mira.
+    var ultimo = turnos.length ? turnos[turnos.length - 1] : null;
+    enVivoUltimo.textContent = ultimo
+      ? (ultimo.rol === 'agente' ? 'Agente: ' : 'Cliente: ') + ultimo.texto
+      : 'Todavía no ha dicho nada.';
+  }
+
+  enVivo.addEventListener('click', function () {
+    if (llamadaEnCurso) { abrirLlamada(llamadaEnCurso.id); }
+  });
+
+  // ---- modal de detalle ----------------------------------------------------
+
+  var modalFondo = document.getElementById('modal-fondo');
+  var modalTitulo = document.getElementById('modal-titulo');
+  var modalCuerpo = document.getElementById('modal-cuerpo');
+
+  var cierreModal = null;
+
+  /** El hueco que ocupa el contenido mientras llega.
+   *
+   * No es decoración: el modal se abría con un «Cargando…» de una línea y, en cuanto
+   * respondía la consulta, la caja pegaba un salto hasta su tamaño real **en mitad de
+   * la animación de entrada**. Ese salto se comía la transición y lo que se veía era
+   * un pop. Con el hueco ya ocupado, la caja no cambia de tamaño y la apertura se
+   * lee entera.
+   */
+  function esqueleto() {
+    var filas = '';
+    for (var i = 0; i < 5; i++) {
+      filas += '<div class="hueso hueso-etiqueta"></div>' +
+               '<div class="hueso hueso-valor"></div>';
+    }
+    var lineas = '';
+    // Anchos distintos para que parezca conversación y no una tabla: todas iguales
+    // se leen como un bloque cargando, no como frases.
+    ['92%', '74%', '86%', '61%'].forEach(function (ancho) {
+      lineas += '<div class="hueso hueso-turno" style="width:' + ancho + '"></div>';
+    });
+    return '<div class="esqueleto" aria-hidden="true">' +
+           '<div class="esqueleto-ficha">' + filas + '</div>' +
+           '<div class="hueso hueso-titulo"></div>' + lineas +
+           '</div><p class="sr-solo" role="status">Cargando…</p>';
+  }
+
+  /** Muestra el modal con su transición de entrada.
+   *
+   * `hidden` es `display: none`, y desde ahí no hay nada que transicionar. Hay que
+   * quitarlo primero, dejar que el navegador registre el estado inicial —eso es lo
+   * que fuerza la lectura de `offsetWidth`— y sólo entonces poner la clase. Sin ese
+   * paso intermedio los dos estados caen en el mismo fotograma y el cuadro aparece
+   * de golpe, que es justo lo que se quiere evitar.
+   */
+  function mostrarModal() {
+    clearTimeout(cierreModal);
+    modalFondo.hidden = false;
+    void modalFondo.offsetWidth;
+    modalFondo.classList.add('abierto');
+  }
+
+  function cerrarModal() {
+    if (modalFondo.hidden) { return; }
+    modalFondo.classList.remove('abierto');
+    // Se oculta cuando la salida ha terminado, no antes: con `hidden` inmediato el
+    // cuadro desaparece de golpe y la animación de cierre no llega a verse. El
+    // tiempo va aquí y en el CSS, así que si se cambia uno hay que cambiar el otro.
+    cierreModal = setTimeout(function () {
+      modalFondo.hidden = true;
+      modalCuerpo.innerHTML = '';
+    }, 180);
+  }
+
+  document.getElementById('modal-cerrar').addEventListener('click', cerrarModal);
+  modalFondo.addEventListener('click', function (ev) {
+    // Sólo el fondo: un clic dentro del cuadro no debe cerrarlo.
+    if (ev.target === modalFondo) { cerrarModal(); }
+  });
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape' && !modalFondo.hidden) { cerrarModal(); }
+  });
+
+  function abrirPedido(id) {
+    mostrarModal();
+    modalTitulo.textContent = 'Pedido #' + id;
+    modalCuerpo.innerHTML = esqueleto();
+
+    fetch('/api/pedidos/' + id)
+      .then(function (r) {
+        // Mismo motivo que en `cargarPedidos`: un 404 aqui no es una respuesta vacia,
+        // es una ruta que este servicio todavia no tiene.
+        if (!r.ok && r.status !== 404) { throw new Error('HTTP ' + r.status); }
+        return r.json();
+      })
+      .then(function (d) {
+        if (d.error || d.detail) {
+          modalCuerpo.innerHTML = '<p class="vacio">' +
+            escapar(d.mensaje || d.detail || 'No se pudo leer el pedido.') + '</p>';
+          return;
+        }
+        var p = d.pedido;
+        var html = '<dl class="ficha">' +
+          '<dt>Qué pide</dt><dd><strong>' + escapar(p.resumen) + '</strong></dd>' +
+          '<dt>A nombre de</dt><dd>' + (escapar(p.nombre) || '—') + '</dd>' +
+          '<dt>Para cuándo</dt><dd>' + (escapar(p.cuando_texto) || '—') + '</dd>' +
+          '<dt>Teléfono</dt><dd>' + (escapar(p.telefono) || '—') + '</dd>' +
+          '<dt>Apuntado</dt><dd>' +
+            escapar((p.creado_en || '').replace('T', ' ')) + '</dd>' +
+          '<dt>Estado</dt><dd>' + (p.reemplazado_por
+              ? 'cambiado por #' + p.reemplazado_por
+              : (p.atendido ? 'atendido' : 'pendiente')) + '</dd>';
+        if (p.detalles) {
+          html += '<dt>Detalles</dt><dd>' + escapar(p.detalles) + '</dd>';
+        }
+        html += '</dl>';
+
+        // La conversacion va con el pedido porque la pregunta de quien lo mira es
+        // «¿esto es lo que el cliente dijo de verdad?», y la respuesta es la llamada.
+        if (d.turnos && d.turnos.length) {
+          html += '<h4>De esta conversación (llamada #' +
+            escapar(p.llamada_id) + ')</h4><div class="conversacion-modal">';
+          d.turnos.forEach(function (t) {
+            var quien = t.rol === 'agente' ? 'Agente' : 'Cliente';
+            html += '<p class="turno" data-rol="' + escapar(t.rol) + '"><strong>' +
+              quien + ':</strong> ' + escapar(t.texto) + '</p>';
+          });
+          html += '</div>';
+        } else {
+          html += '<p class="vacio">Sin conversación registrada.</p>';
+        }
+        modalCuerpo.innerHTML = html;
+      })
       .catch(function () {
-        listadoPedidos.innerHTML = '<p class="vacio">No se pudieron leer los pedidos.</p>';
+        modalCuerpo.innerHTML = '<p class="vacio">No se pudo leer el pedido.</p>';
       });
   }
 
+  // ---- sondeo --------------------------------------------------------------
+
+  var pulsoVivo = document.getElementById('pulso-vivo');
+  var temporizadorVivo = null;
+  // Cada vuelta abre una conexion a la base. 3 s deja ver aparecer un pedido
+  // mientras se habla sin robarle tiempo al turno de la llamada en curso; fuera de
+  // esos dos momentos no hay nada que pueda cambiar de un segundo a otro, asi que
+  // se espacia. El sondeo no para nunca del todo porque el aviso de llamada en
+  // curso vive en la cabecera y tiene que aparecer se este donde se este.
+  var MS_SONDEO_ATENTO = 3000;
+  var MS_SONDEO_TRANQUILO = 15000;
+
+  function ritmo() {
+    var enPedidos = document.getElementById('p-pedidos').classList.contains('activa');
+    return (llamadaEnCurso || enPedidos) ? MS_SONDEO_ATENTO : MS_SONDEO_TRANQUILO;
+  }
+
+  function cargarPedidos() {
+    // `fetch` sólo rechaza si no hay red: un 404 o un 500 llegan aquí como respuesta
+    // buena. Sin comprobar `r.ok`, un servidor con código viejo —que no conoce esta
+    // ruta— se veía como «todavía no ha apuntado nada», que es la respuesta correcta
+    // a una pregunta que nadie hizo. Pasó de verdad: el navegador cargaba este JS
+    // nuevo del disco mientras el proceso seguía con el Python de antes.
+    return fetch('/api/vivo')
+      .then(function (r) {
+        if (!r.ok) { throw new Error('HTTP ' + r.status); }
+        return r.json();
+      })
+      .then(function (d) {
+        // La tabla sólo se repinta con su pestaña delante; el aviso de la cabecera,
+        // siempre, que para eso está arriba.
+        if (document.getElementById('p-pedidos').classList.contains('activa')) {
+          pintarPedidos(d.pedidos || [], d.pendientes || 0);
+        }
+        pintarEnVivo(d.en_curso, d.turnos || []);
+      })
+      .catch(function (ex) {
+        sondearVivo(false);
+        pintarEnVivo(null, []);
+        listadoPedidos.innerHTML = '<p class="vacio">No se pudieron leer los pedidos (' +
+          escapar(ex.message) + ').' +
+          (String(ex.message).indexOf('404') >= 0
+            ? ' Esta ruta es nueva: el servicio está corriendo con una versión' +
+              ' anterior. Reinícialo y vuelve a esta pestaña.'
+            : '') +
+          '</p>';
+      });
+  }
+
+  var sondeando = false;
+
+  function sondearVivo(encender) {
+    clearTimeout(temporizadorVivo);
+    sondeando = !!encender;
+    pulsoVivo.hidden = !encender;
+    if (!encender) { return; }
+
+    // Encadenado y no `setInterval`: si una vuelta tarda, la siguiente espera en vez
+    // de amontonarse encima y dejar varias consultas a la vez contra la base.
+    function vuelta() {
+      if (!sondeando) { return; }
+      // Con la ventana de fondo el navegador no repinta nada, asi que sondear seria
+      // gastar por gastar — pero se sigue programando la siguiente vuelta, para que
+      // al volver se refresque solo.
+      var trabajo = document.hidden ? Promise.resolve() : cargarPedidos();
+      trabajo.then(function () {
+        if (sondeando) { temporizadorVivo = setTimeout(vuelta, ritmo()); }
+      });
+    }
+    temporizadorVivo = setTimeout(vuelta, ritmo());
+  }
+
+  listadoPedidos.addEventListener('click', function (ev) {
+    if (ev.target.closest('button')) { return; }
+    var fila = ev.target.closest('tr[data-pedido]');
+    if (fila) { abrirPedido(fila.dataset.pedido); }
+  });
+
   prepararSecretos();
+  vigilarCampos();
   cargarConfig();
   cargarLlamadas();
   cargarPedidos();
+  // El sondeo arranca con la pagina y ya no para: el aviso de llamada en curso vive
+  // en la cabecera, asi que tiene que poder aparecer este uno donde este.
+  sondearVivo(true);
 })();

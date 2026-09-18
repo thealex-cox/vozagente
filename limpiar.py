@@ -15,12 +15,15 @@ tandas de `pruebas/`, que no sirven para enseñar nada.
 
 import argparse
 import os
-import shutil
-import sqlite3
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+import psycopg
+
+from nucleo import ajustes, almacen
+
 RAIZ = os.path.dirname(os.path.abspath(__file__))
-BASE = os.environ.get('VOZ_BD') or os.path.join(RAIZ, 'llamadas.db')
 
 
 def candidatas(con):
@@ -28,7 +31,7 @@ def candidatas(con):
     return [fila[0] for fila in con.execute(
         'SELECT id FROM llamada WHERE es_prueba = 1 AND id NOT IN '
         '(SELECT DISTINCT llamada_id FROM turno WHERE llamada_id IS NOT NULL)'
-    )]
+    ).fetchall()]
 
 
 def main():
@@ -37,11 +40,13 @@ def main():
                         help='Borra de verdad. Sin esto solo informa.')
     args = parser.parse_args()
 
-    if not os.path.exists(BASE):
-        print(f'\n  No hay base de datos en {BASE}\n')
+    config = ajustes.cargar()
+    try:
+        con = psycopg.connect(ajustes.dsn(config), connect_timeout=10)
+    except Exception as ex:
+        print(f'\n  No se puede abrir la base: {almacen.texto_seguro(ex)}\n')
         return 1
 
-    con = sqlite3.connect(BASE, timeout=10)
     ids = candidatas(con)
     total = con.execute('SELECT COUNT(*) FROM llamada').fetchone()[0]
     con_turnos = con.execute(
@@ -51,11 +56,13 @@ def main():
         print(f'\n  Nada que limpiar: {total} llamada(s), ninguna de prueba vacia.\n')
         return 0
 
-    marcas = ','.join('?' * len(ids))
+    # `= ANY(%s)` en vez de armar una lista de marcadores: el driver manda la lista
+    # entera como un solo parametro, asi que no hay que contar huecos ni cabe que el
+    # numero de marcadores y el de valores se descuadren.
     pedidos = con.execute(
-        f'SELECT COUNT(*) FROM pedido WHERE llamada_id IN ({marcas})', ids).fetchone()[0]
+        'SELECT COUNT(*) FROM pedido WHERE llamada_id = ANY(%s)', (ids,)).fetchone()[0]
 
-    print(f'\n  Base            : {BASE}')
+    print(f"\n  Base            : {ajustes.bd(config).get('base') or 'vozagente'} (PostgreSQL)")
     print(f'  Llamadas        : {total}')
     print(f'  Con transcripcion: {con_turnos}  (intactas, son el plan B)')
     print(f'  Se llevaria     : {len(ids)} llamada(s) de prueba y {pedidos} pedido(s)')
@@ -64,18 +71,22 @@ def main():
         print('\n  Esto es solo un aviso. Para hacerlo: python limpiar.py --hazlo\n')
         return 0
 
-    copia = BASE + '.antes-de-limpiar'
-    shutil.copy2(BASE, copia)
+    copia = almacen.volcar_a_fichero(os.path.join(RAIZ, 'llamadas.antes-de-limpiar.sql'))
+    if not copia:
+        print('  [!] No se pudo hacer la copia de seguridad: se sigue igualmente.')
 
-    con.execute(f'DELETE FROM pedido  WHERE llamada_id IN ({marcas})', ids)
-    con.execute(f'DELETE FROM evento  WHERE llamada_id IN ({marcas})', ids)
-    con.execute(f'DELETE FROM consumo WHERE llamada_id IN ({marcas})', ids)
-    con.execute(f'DELETE FROM llamada WHERE id IN ({marcas})', ids)
+    con.execute('DELETE FROM pedido  WHERE llamada_id = ANY(%s)', (ids,))
+    con.execute('DELETE FROM evento  WHERE llamada_id = ANY(%s)', (ids,))
+    con.execute('DELETE FROM consumo WHERE llamada_id = ANY(%s)', (ids,))
+    con.execute('DELETE FROM llamada WHERE id = ANY(%s)', (ids,))
     con.commit()
 
     print(f'\n  Hecho. Quedan {con.execute("SELECT COUNT(*) FROM llamada").fetchone()[0]} '
           f'llamada(s) y {con.execute("SELECT COUNT(*) FROM pedido").fetchone()[0]} pedido(s).')
-    print(f'  Copia de antes  : {copia}\n')
+    if copia:
+        print(f'  Copia de antes  : {copia}\n')
+    else:
+        print()
     return 0
 
 

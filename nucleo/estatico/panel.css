@@ -1,13 +1,40 @@
+/* Panel del agente de voz.
+ *
+ * Una sola hoja, sin framework: esto se sirve desde el mismo proceso que atiende
+ * las llamadas y no merece una cadena de compilacion. Todo lo que se repite —color,
+ * espacio, radio, sombra— sale de las variables de abajo; tocar una cambia el panel
+ * entero y no hay que ir buscando el valor suelto que se quedo sin cambiar.
+ */
+
 :root {
-    --tinta: #1d2126;
+    --tinta: #16191d;
+    --tinta-media: #4b5563;
     --suave: #6b7280;
-    --linea: #e3e6ea;
-    --fondo: #f6f7f9;
+    --linea: #e4e7ec;
+    --linea-fuerte: #d3d8e0;
+    --fondo: #f5f6f8;
     --tarjeta: #ffffff;
-    --acento: #2f6fd0;
-    --ok: #2e9e5b;
-    --aviso: #b7791f;
-    --error: #c0392b;
+
+    --acento: #2563eb;
+    --acento-oscuro: #1d4ed8;
+    --acento-flojo: #eff4ff;
+    --ok: #15803d;
+    --ok-flojo: #eefbf2;
+    --aviso: #b45309;
+    --aviso-flojo: #fff8ec;
+    --error: #b91c1c;
+    --error-flojo: #fef2f2;
+
+    --r-s: 5px;
+    --r-m: 8px;
+    --r-l: 12px;
+
+    --sombra-s: 0 1px 2px rgba(16, 24, 40, .05);
+    --sombra-m: 0 2px 8px rgba(16, 24, 40, .07);
+    --sombra-l: 0 16px 48px rgba(16, 24, 40, .18);
+
+    --ancho: 64rem;
+    --rapido: .15s ease;
 }
 
 * { box-sizing: border-box; }
@@ -16,9 +43,15 @@ body {
     margin: 0;
     background: var(--fondo);
     color: var(--tinta);
-    font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
-    padding-bottom: 5.5rem;
+    font: 15px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    /* Deja sitio a la barra fija de guardar, que flota sobre el contenido. */
+    padding-bottom: 6rem;
+    -webkit-font-smoothing: antialiased;
 }
+
+h1, h2, h3, h4 { letter-spacing: -.01em; }
+
+/* ---- cabecera ---- */
 
 .cabecera {
     background: var(--tarjeta);
@@ -28,218 +61,222 @@ body {
 
 .cabecera-fila {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     justify-content: space-between;
     gap: 1rem;
-    max-width: 62rem;
+    max-width: var(--ancho);
     margin: 0 auto;
 }
 
-.cabecera h1 {
-    font-size: 1.35rem;
-    margin: 0;
+.cabecera-quien {
+    display: flex;
+    align-items: baseline;
+    gap: .7rem;
+    flex-wrap: wrap;
+    min-width: 0;
 }
+
+.cabecera h1 {
+    font-size: 1.3rem;
+    margin: 0;
+    font-weight: 650;
+}
+
+/* El numero al que llaman los clientes. En monoespaciada porque se dicta digito a
+   digito y con la proporcional los grupos de cifras se leen peor. */
+.cabecera-numero {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .85rem;
+    color: var(--tinta-media);
+    background: var(--fondo);
+    border: 1px solid var(--linea);
+    border-radius: 999px;
+    padding: .12rem .6rem;
+    white-space: nowrap;
+}
+
+.cabecera-numero[hidden] { display: none; }
 
 .boton-enlace {
     color: var(--acento);
     text-decoration: none;
     font-size: .88rem;
+    font-weight: 550;
+    padding: .4rem .75rem;
+    border: 1px solid var(--linea-fuerte);
+    border-radius: var(--r-s);
+    background: var(--tarjeta);
+    white-space: nowrap;
+    transition: background var(--rapido), border-color var(--rapido);
 }
 
-.boton-enlace:hover { text-decoration: underline; }
+.boton-enlace:hover {
+    background: var(--acento-flojo);
+    border-color: var(--acento);
+}
 
+/* El semaforo de arriba: lo que impediria que una llamada sonara bien. */
 .estado {
-    max-width: 62rem;
+    max-width: var(--ancho);
     margin: .7rem auto 0;
-    padding: .55rem .8rem;
-    border-radius: 5px;
     font-size: .87rem;
-    background: #eef2f7;
+    color: var(--tinta-media);
+}
+
+.estado ul { margin: .35rem 0 0; padding-left: 1.1rem; }
+
+.estado li[data-nivel="bloqueo"] { color: var(--error); font-weight: 550; }
+.estado li[data-nivel="aviso"] { color: var(--aviso); }
+
+/* ---- llamada en curso ---- */
+
+.en-vivo {
+    display: flex;
+    align-items: center;
+    gap: .55rem;
+    width: 100%;
+    max-width: var(--ancho);
+    margin: .8rem auto 0;
+    padding: .6rem .9rem;
+    background: var(--error-flojo);
+    border: 1px solid #fbd5d5;
+    border-left: 3px solid var(--error);
+    border-radius: var(--r-m);
+    font: inherit;
+    font-size: .88rem;
+    color: var(--tinta);
+    text-align: left;
+    cursor: pointer;
+    transition: background var(--rapido);
+}
+
+.en-vivo:hover { background: #fde8e8; }
+.en-vivo[hidden] { display: none; }
+
+.punto-vivo {
+    flex: none;
+    width: .55rem;
+    height: .55rem;
+    border-radius: 50%;
+    background: var(--error);
+    animation: latido 1.4s ease-in-out infinite;
+}
+
+/* Lo ultimo dicho ocupa lo que sobre y se corta con puntos suspensivos: si creciera,
+   la franja cambiaria de alto en cada turno y empujaria la pagina entera hacia
+   abajo mientras se esta leyendo. */
+.en-vivo-ultimo {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     color: var(--suave);
 }
 
-.estado[data-nivel="ok"] { background: #eaf6ee; color: #24693f; }
-.estado[data-nivel="aviso"] { background: #fdf4e3; color: #8a5d0f; }
-.estado[data-nivel="bloqueado"] { background: #fbeceb; color: #93291e; }
+.en-vivo-abrir {
+    flex: none;
+    color: var(--acento);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+@keyframes latido {
+    0%, 100% { opacity: 1; }
+    50% { opacity: .3; }
+}
+
+/* ---- pestanas ---- */
 
 .pestanas {
-    max-width: 62rem;
-    margin: 1.2rem auto .2rem;
-    padding: 0 1.5rem;
     display: flex;
-    gap: .3rem;
-    flex-wrap: wrap;
+    gap: .15rem;
+    max-width: var(--ancho);
+    margin: 0 auto;
+    padding: 0 1.5rem;
+    overflow-x: auto;
+    scrollbar-width: none;
 }
 
+.pestanas::-webkit-scrollbar { display: none; }
+
 .pestana {
-    border: 1px solid transparent;
-    border-bottom: none;
+    position: relative;
     background: none;
-    padding: .5rem .9rem;
+    border: 0;
+    padding: .85rem .95rem;
     font: inherit;
     font-size: .92rem;
+    font-weight: 550;
     color: var(--suave);
     cursor: pointer;
-    border-radius: 6px 6px 0 0;
+    white-space: nowrap;
+    transition: color var(--rapido);
 }
 
 .pestana:hover { color: var(--tinta); }
 
-.pestana.activa {
-    background: var(--tarjeta);
-    border-color: var(--linea);
-    color: var(--tinta);
-    font-weight: 600;
+.pestana.activa { color: var(--acento); }
+
+/* La linea va en un pseudoelemento y no en un borde: asi no descuadra el alto de
+   las pestanas que no estan activas. */
+.pestana.activa::after {
+    content: "";
+    position: absolute;
+    left: .6rem;
+    right: .6rem;
+    bottom: -1px;
+    height: 2px;
+    background: var(--acento);
+    border-radius: 2px 2px 0 0;
 }
+
+.contador {
+    display: inline-block;
+    min-width: 1.2rem;
+    padding: 0 .35rem;
+    margin-left: .3rem;
+    background: var(--acento);
+    color: #fff;
+    border-radius: 999px;
+    font-size: .74rem;
+    font-weight: 700;
+    line-height: 1.2rem;
+    text-align: center;
+}
+
+.contador[hidden] { display: none; }
+
+/* ---- secciones ---- */
 
 main {
-    max-width: 62rem;
+    max-width: var(--ancho);
     margin: 0 auto;
-    padding: 0 1.5rem;
+    padding: 1.5rem;
 }
 
-.panel {
-    display: none;
-    background: var(--tarjeta);
-    border: 1px solid var(--linea);
-    border-radius: 0 6px 6px 6px;
-    padding: 1.6rem;
-}
-
+.panel { display: none; }
 .panel.activa { display: block; }
 
 .panel h2 {
+    font-size: 1.15rem;
     margin: 0 0 .3rem;
-    font-size: 1.12rem;
+    font-weight: 650;
 }
 
 .panel h3 {
-    margin: 2rem 0 .8rem;
     font-size: .95rem;
-    padding-bottom: .35rem;
+    margin: 2rem 0 .9rem;
+    padding-bottom: .5rem;
     border-bottom: 1px solid var(--linea);
+    font-weight: 650;
 }
 
 .ayuda {
-    color: var(--suave);
-    font-size: .87rem;
-    margin: .2rem 0 1.3rem;
-    max-width: 46rem;
-}
-
-.ayuda code, .panel code {
-    background: #eef1f5;
-    padding: .1rem .35rem;
-    border-radius: 3px;
-    font-size: .85em;
-}
-
-.campo { margin-bottom: 1.15rem; }
-
-.campo label {
-    display: block;
-    font-weight: 600;
+    color: var(--tinta-media);
     font-size: .88rem;
-    margin-bottom: .3rem;
-}
-
-.campo small {
-    display: block;
-    color: var(--suave);
-    font-size: .81rem;
-    margin-top: .3rem;
-}
-
-input[type="text"],
-input[type="password"],
-input[type="number"],
-select,
-textarea {
-    width: 100%;
-    padding: .5rem .65rem;
-    border: 1px solid var(--linea);
-    border-radius: 5px;
-    font: inherit;
-    font-size: .92rem;
-    background: #fff;
-    color: var(--tinta);
-}
-
-textarea {
-    resize: vertical;
-    line-height: 1.5;
-    font-size: .89rem;
-}
-
-input:focus, select:focus, textarea:focus {
-    outline: none;
-    border-color: var(--acento);
-    box-shadow: 0 0 0 3px rgba(47, 111, 208, .12);
-}
-
-.dos-columnas {
-    display: flex;
-    gap: 1rem;
-    flex-wrap: wrap;
-}
-
-.dos-columnas .campo {
-    flex: 1 1 15rem;
-}
-
-.fila-secreto {
-    display: flex;
-    align-items: stretch;
-    gap: .3rem;
-}
-
-.fila-secreto input {
-    flex: 1 1 auto;
-    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
-    font-size: .86rem;
-}
-
-.icono {
-    flex: 0 0 auto;
-    width: 2.3rem;
-    border: 1px solid var(--linea);
-    border-radius: 5px;
-    background: #fbfcfd;
-    color: var(--suave);
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0;
-}
-
-.icono:hover {
-    background: #eef2f7;
-    color: var(--tinta);
-}
-
-.icono svg {
-    width: 17px;
-    height: 17px;
-    fill: currentColor;
-}
-
-.icono[data-ok="si"] {
-    color: var(--ok);
-    border-color: var(--ok);
-    background: #eaf6ee;
-}
-
-.marcar {
-    display: flex;
-    align-items: center;
-    gap: .6rem;
-    flex-wrap: wrap;
-    margin-bottom: 1.4rem;
-}
-
-.marcar input {
-    flex: 0 1 15rem;
+    margin: .3rem 0 1.4rem;
+    max-width: 46rem;
 }
 
 .ayuda-inline {
@@ -247,20 +284,216 @@ input:focus, select:focus, textarea:focus {
     font-size: .82rem;
 }
 
+.pulso-vivo {
+    color: var(--ok);
+    font-size: .8rem;
+    font-weight: 600;
+    margin-left: .4rem;
+    white-space: nowrap;
+}
+
+.pulso-vivo::before {
+    content: "";
+    display: inline-block;
+    width: .45rem;
+    height: .45rem;
+    margin-right: .35rem;
+    border-radius: 50%;
+    background: var(--ok);
+    vertical-align: middle;
+    animation: latido 2s ease-in-out infinite;
+}
+
+.pulso-vivo[hidden] { display: none; }
+
+code {
+    background: var(--fondo);
+    border: 1px solid var(--linea);
+    padding: .08rem .3rem;
+    border-radius: var(--r-s);
+    font-size: .86em;
+}
+
+/* ---- campos ---- */
+
+.campo {
+    background: var(--tarjeta);
+    border: 1px solid var(--linea);
+    border-radius: var(--r-m);
+    padding: .9rem 1rem;
+    margin-bottom: .8rem;
+    box-shadow: var(--sombra-s);
+}
+
+.campo label {
+    display: block;
+    font-size: .84rem;
+    font-weight: 600;
+    color: var(--tinta-media);
+    margin-bottom: .4rem;
+}
+
+.campo small {
+    display: block;
+    color: var(--suave);
+    font-size: .8rem;
+    margin-top: .45rem;
+    line-height: 1.5;
+}
+
+input, select, textarea {
+    width: 100%;
+    font: inherit;
+    color: var(--tinta);
+    background: var(--tarjeta);
+    border: 1px solid var(--linea-fuerte);
+    border-radius: var(--r-s);
+    padding: .5rem .65rem;
+    transition: border-color var(--rapido), box-shadow var(--rapido);
+}
+
+textarea {
+    resize: vertical;
+    line-height: 1.55;
+    font-size: .92rem;
+}
+
+input:focus, select:focus, textarea:focus {
+    outline: 0;
+    border-color: var(--acento);
+    box-shadow: 0 0 0 3px var(--acento-flojo);
+}
+
+input:read-only { background: var(--fondo); color: var(--suave); }
+
+.dos-columnas {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: .8rem;
+}
+
+/* ---- secretos: ver, copiar, pegar ---- */
+
+.fila-secreto {
+    display: flex;
+    gap: .35rem;
+    align-items: stretch;
+}
+
+.fila-secreto input { flex: 1; min-width: 0; }
+
+.icono {
+    flex: none;
+    width: 2.1rem;
+    display: grid;
+    place-items: center;
+    background: var(--tarjeta);
+    border: 1px solid var(--linea-fuerte);
+    border-radius: var(--r-s);
+    color: var(--suave);
+    cursor: pointer;
+    padding: 0;
+    transition: background var(--rapido), color var(--rapido),
+                border-color var(--rapido);
+}
+
+.icono svg { width: 1.05rem; height: 1.05rem; fill: currentColor; }
+
+.icono:hover {
+    background: var(--acento-flojo);
+    border-color: var(--acento);
+    color: var(--acento);
+}
+
+.icono[data-ok="si"] {
+    color: var(--ok);
+    border-color: var(--ok);
+    background: var(--ok-flojo);
+}
+
+/* ---- botones ---- */
+
+.boton-principal, .boton-secundario {
+    font: inherit;
+    font-size: .9rem;
+    font-weight: 600;
+    padding: .55rem 1.1rem;
+    border-radius: var(--r-s);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background var(--rapido), border-color var(--rapido),
+                color var(--rapido);
+}
+
 .boton-principal {
     background: var(--acento);
     color: #fff;
-    border: none;
-    border-radius: 5px;
-    padding: .55rem 1.1rem;
-    font: inherit;
-    font-weight: 600;
-    font-size: .9rem;
-    cursor: pointer;
+    border: 1px solid var(--acento);
 }
 
-.boton-principal:hover { background: #275ba9; }
-.boton-principal:disabled { opacity: .55; cursor: default; }
+.boton-principal:hover:not(:disabled) {
+    background: var(--acento-oscuro);
+    border-color: var(--acento-oscuro);
+}
+
+.boton-principal:disabled {
+    background: var(--linea-fuerte);
+    border-color: var(--linea-fuerte);
+    color: #fff;
+    cursor: default;
+}
+
+.boton-secundario {
+    background: var(--tarjeta);
+    color: var(--tinta-media);
+    border: 1px solid var(--linea-fuerte);
+}
+
+.boton-secundario:hover { background: var(--fondo); color: var(--tinta); }
+.boton-secundario[hidden] { display: none; }
+
+.mini {
+    font: inherit;
+    font-size: .8rem;
+    font-weight: 550;
+    padding: .25rem .6rem;
+    background: var(--tarjeta);
+    color: var(--tinta-media);
+    border: 1px solid var(--linea-fuerte);
+    border-radius: var(--r-s);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background var(--rapido), border-color var(--rapido);
+}
+
+.mini:hover { background: var(--acento-flojo); border-color: var(--acento); }
+
+/* ---- marcar ---- */
+
+.marcar {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    flex-wrap: wrap;
+    background: var(--tarjeta);
+    border: 1px solid var(--linea);
+    border-radius: var(--r-m);
+    padding: .85rem 1rem;
+    margin-bottom: 1.2rem;
+    box-shadow: var(--sombra-s);
+}
+
+.marcar input { flex: 1; min-width: 12rem; }
+
+/* ---- tablas ---- */
+
+.listado {
+    background: var(--tarjeta);
+    border: 1px solid var(--linea);
+    border-radius: var(--r-m);
+    overflow: hidden;
+    box-shadow: var(--sombra-s);
+}
 
 table {
     width: 100%;
@@ -270,133 +503,365 @@ table {
 
 thead th {
     text-align: left;
-    font-size: .78rem;
+    font-size: .76rem;
+    font-weight: 650;
     text-transform: uppercase;
-    letter-spacing: .03em;
+    letter-spacing: .04em;
     color: var(--suave);
+    background: #fafbfc;
+    padding: .6rem .85rem;
     border-bottom: 1px solid var(--linea);
-    padding: .4rem .5rem;
+    white-space: nowrap;
 }
 
 tbody td {
-    padding: .5rem;
+    padding: .65rem .85rem;
     border-bottom: 1px solid var(--linea);
+    vertical-align: top;
 }
 
-tbody tr { cursor: pointer; }
-tbody tr:hover { background: #f4f7fb; }
+tbody tr:last-child td { border-bottom: 0; }
 
-.num { text-align: right; }
+tbody tr { cursor: pointer; transition: background var(--rapido); }
+tbody tr:hover { background: var(--acento-flojo); }
+
+/* Un pedido ya atendido sigue a la vista —es la evidencia de lo que se hablo— pero
+   apagado, para que lo pendiente destaque de un vistazo. */
+tbody tr[data-atendido="si"] { color: var(--suave); }
+tbody tr[data-atendido="si"] strong { font-weight: 500; }
+
+.num { text-align: right; white-space: nowrap; }
 
 .etiqueta {
     display: inline-block;
-    padding: .1rem .45rem;
-    border-radius: 3px;
-    font-size: .78rem;
-    background: #eef1f5;
-    color: var(--suave);
+    padding: .12rem .5rem;
+    border-radius: 999px;
+    font-size: .76rem;
+    font-weight: 600;
+    background: var(--fondo);
+    color: var(--tinta-media);
+    border: 1px solid var(--linea-fuerte);
+    white-space: nowrap;
 }
 
-.etiqueta[data-estado="finalizada"] { background: #eaf6ee; color: #24693f; }
-.etiqueta[data-estado="en curso"] { background: #e7f0fb; color: #1f568f; }
+.etiqueta[data-estado="en curso"] {
+    background: var(--ok-flojo); color: var(--ok); border-color: #b6e6c8;
+}
+
+.etiqueta[data-estado="finalizada"] {
+    background: var(--acento-flojo); color: var(--acento); border-color: #c7dbfe;
+}
+
 .etiqueta[data-estado="fallida"],
-.etiqueta[data-estado="sin respuesta"] { background: #fbeceb; color: #93291e; }
+.etiqueta[data-estado="sin respuesta"] {
+    background: var(--error-flojo); color: var(--error); border-color: #fbd5d5;
+}
+
+.detalle { color: var(--suave); font-size: .82rem; }
 
 .vacio {
     color: var(--suave);
     font-size: .88rem;
-    padding: 1.2rem 0;
+    padding: 2rem 1rem;
+    text-align: center;
+    margin: 0;
 }
 
-.conversacion {
-    margin-top: 1.8rem;
-    padding-top: 1.2rem;
-    border-top: 1px solid var(--linea);
-}
+/* ---- conversacion ---- */
 
-.turno { margin: .35rem 0; }
-.turno[data-rol="agente"] { color: #1f568f; }
+.turno { margin: .4rem 0; }
+.turno[data-rol="agente"] { color: #1e4b8f; }
 
 .turno .ms {
     color: var(--suave);
-    font-size: .78rem;
+    font-size: .76rem;
 }
 
 .eventos {
-    color: var(--suave);
-    font-size: .82rem;
+    margin: .4rem 0 0;
     padding-left: 1.1rem;
-}
-
-.pie {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    background: var(--tarjeta);
-    border-top: 1px solid var(--linea);
-    padding: .8rem 1.5rem;
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-}
-
-.aviso-guardado {
-    font-size: .86rem;
-    color: var(--suave);
-}
-
-.aviso-guardado[data-error="si"] { color: var(--error); }
-
-.contador {
-    display: inline-block;
-    min-width: 1.25rem;
-    padding: 0 .3rem;
-    margin-left: .3rem;
-    border-radius: 999px;
-    background: var(--acento);
-    color: #fff;
-    font-size: .72rem;
-    font-weight: 700;
-    text-align: center;
-}
-
-tr[data-atendido="si"] { opacity: .5; }
-tr[data-atendido="si"] strong { font-weight: 400; text-decoration: line-through; }
-
-.detalle {
     color: var(--suave);
     font-size: .82rem;
 }
 
-button.mini {
-    border: 1px solid var(--linea);
-    background: #fbfcfd;
-    border-radius: 4px;
-    padding: .2rem .55rem;
-    font: inherit;
-    font-size: .78rem;
-    color: var(--suave);
-    cursor: pointer;
-}
-
-button.mini:hover { background: #eef2f7; color: var(--tinta); }
+/* ---- enlaces para compartir ---- */
 
 .enlaces {
-    background: #f4f7fb;
-    border: 1px solid #dbe6f5;
-    border-radius: 6px;
-    padding: 1rem 1rem .3rem;
-    margin-bottom: 1.2rem;
+    background: var(--acento-flojo);
+    border: 1px solid #c7dbfe;
+    border-radius: var(--r-m);
+    padding: .9rem 1rem;
+    margin-top: 1rem;
 }
 
 .etiqueta-enlaces {
-    margin: 0 0 .8rem;
+    margin: 0 0 .7rem;
     font-weight: 600;
-    font-size: .88rem;
+    font-size: .86rem;
 }
 
-.enlaces input {
-    background: #fff;
+.enlaces input { background: #fff; color: var(--suave); }
+
+/* ---- modal ---- */
+
+.modal-fondo {
+    position: fixed;
+    inset: 0;
+    background: rgba(16, 24, 40, .5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    z-index: 60;
+    opacity: 0;
+    transition: opacity .18s ease;
+}
+
+/* La clase la pone el JS un fotograma despues de quitar `hidden`; si los dos
+   estados cayeran en el mismo fotograma no habria nada que interpolar. Los .18s
+   estan tambien en `cerrarModal()`: si se cambian aqui, hay que cambiarlos alli. */
+.modal-fondo.abierto { opacity: 1; }
+
+.modal-fondo[hidden] { display: none; }
+
+.modal {
+    /* Sube un poco y crece lo justo. Un salto de escala mayor parece un aviso de
+       error; esto solo tiene que decir «esto de aqui se ha abierto encima». */
+    opacity: 0;
+    transform: translateY(10px) scale(.985);
+    transition: opacity .18s ease, transform .2s cubic-bezier(.2, .8, .3, 1);
+    background: var(--tarjeta);
+    border-radius: var(--r-l);
+    box-shadow: var(--sombra-l);
+    width: 100%;
+    max-width: 40rem;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.modal-fondo.abierto .modal {
+    opacity: 1;
+    transform: none;
+}
+
+.modal-cabecera {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1.3rem;
+    border-bottom: 1px solid var(--linea);
+}
+
+.modal-cabecera h3 { margin: 0; font-size: 1.02rem; font-weight: 650; }
+
+.modal-cerrar {
+    background: none;
+    border: 0;
+    font-size: 1.5rem;
+    line-height: 1;
     color: var(--suave);
+    cursor: pointer;
+    padding: 0 .3rem;
+    border-radius: var(--r-s);
+    transition: color var(--rapido), background var(--rapido);
+}
+
+.modal-cerrar:hover { color: var(--tinta); background: var(--fondo); }
+
+.modal-cuerpo {
+    padding: 1.2rem 1.3rem;
+    overflow-y: auto;
+    /* Alto minimo para que el cuadro nazca ya con su tamano. Sin esto, el esqueleto
+       y el contenido real miden distinto y la caja da un respingo al llegar los
+       datos — justo encima de la animacion de entrada. */
+    min-height: 17rem;
+}
+
+.ficha {
+    display: grid;
+    grid-template-columns: 9rem 1fr;
+    gap: .5rem .9rem;
+    margin: 0 0 1rem;
+}
+
+.ficha dt { color: var(--suave); font-size: .84rem; }
+.ficha dd { margin: 0; }
+
+.modal-cuerpo h4 {
+    margin: 1.3rem 0 .6rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--linea);
+    font-size: .9rem;
+    font-weight: 650;
+}
+
+.conversacion-modal { font-size: .92rem; }
+
+/* ---- esqueleto de carga ---- */
+
+.esqueleto-ficha {
+    display: grid;
+    grid-template-columns: 9rem 1fr;
+    gap: .5rem .9rem;
+    margin-bottom: 1.4rem;
+}
+
+.hueso {
+    height: .82rem;
+    border-radius: 4px;
+    /* El degradado es mas ancho que el elemento y se desplaza: eso es el brillo que
+       recorre. Se anima `background-position`, que no obliga a recalcular la pagina. */
+    background: linear-gradient(90deg, #e9ecf0 25%, #f4f6f8 50%, #e9ecf0 75%);
+    background-size: 280% 100%;
+    animation: brillo 1.4s ease-in-out infinite;
+}
+
+.hueso-etiqueta { width: 70%; }
+.hueso-valor { width: 100%; }
+.hueso-titulo { height: .95rem; width: 11rem; margin: 1.5rem 0 .9rem; }
+.hueso-turno { margin-bottom: .6rem; }
+
+@keyframes brillo {
+    0% { background-position: 140% 0; }
+    100% { background-position: -40% 0; }
+}
+
+/* ---- avisos ---- */
+
+.avisos {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    z-index: 80;
+    display: flex;
+    flex-direction: column;
+    gap: .5rem;
+    width: min(24rem, calc(100vw - 2rem));
+}
+
+.aviso {
+    display: flex;
+    align-items: flex-start;
+    gap: .6rem;
+    padding: .7rem .8rem .7rem .95rem;
+    background: var(--tarjeta);
+    border: 1px solid var(--linea-fuerte);
+    border-left: 3px solid var(--suave);
+    border-radius: var(--r-m);
+    box-shadow: var(--sombra-m);
+    font-size: .87rem;
+    /* Entra deslizandose desde la derecha, que es de donde viene. */
+    opacity: 0;
+    transform: translateX(1rem);
+    transition: opacity .2s ease, transform .2s cubic-bezier(.2, .8, .3, 1);
+}
+
+.aviso.abierto { opacity: 1; transform: none; }
+
+.aviso[data-tipo="ok"] { border-left-color: var(--ok); background: var(--ok-flojo); }
+.aviso[data-tipo="error"] { border-left-color: var(--error); background: var(--error-flojo); }
+
+.aviso-texto { flex: 1; min-width: 0; }
+
+.aviso-cerrar {
+    flex: none;
+    background: none;
+    border: 0;
+    font-size: 1.15rem;
+    line-height: 1;
+    color: var(--suave);
+    cursor: pointer;
+    padding: 0 .15rem;
+    border-radius: var(--r-s);
+    transition: color var(--rapido);
+}
+
+.aviso-cerrar:hover { color: var(--tinta); }
+
+/* ---- barra de guardar ---- */
+
+/* Fija abajo y no al final del documento: el boton vivia detras de doce campos de
+   texto y habia que bajar hasta el sin saber si quedaba algo por guardar. */
+.pie {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    background: rgba(255, 255, 255, .92);
+    backdrop-filter: blur(8px);
+    border-top: 1px solid var(--linea);
+    padding: .75rem 1.5rem;
+    transition: border-color var(--rapido), background var(--rapido);
+}
+
+.pie-fila {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: .7rem;
+    max-width: var(--ancho);
+    margin: 0 auto;
+}
+
+.pie-estado {
+    flex: 1;
+    font-size: .85rem;
+    color: var(--suave);
+}
+
+/* Con cambios pendientes la barra se tine: es la senal de que hay algo que hacer
+   ahi abajo, visible sin tener que leerla. */
+.pie[data-sucio="si"] {
+    background: var(--aviso-flojo);
+    border-top-color: #f0d9a8;
+}
+
+.pie[data-sucio="si"] .pie-estado { color: var(--aviso); font-weight: 600; }
+
+/* ---- accesibilidad ---- */
+
+/* Para lectores de pantalla: el esqueleto es decorativo y va oculto para ellos, asi
+   que el aviso de que se esta cargando tiene que llegar por texto. */
+.sr-solo {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+:focus-visible {
+    outline: 2px solid var(--acento);
+    outline-offset: 2px;
+}
+
+/* Quien pide menos movimiento no lo tiene. Se conservan las opacidades: sin ellas
+   los elementos aparecen de golpe y cuesta mas situar de donde han salido. */
+@media (prefers-reduced-motion: reduce) {
+    .pulso-vivo::before, .punto-vivo, .hueso { animation: none; }
+    .modal, .modal-fondo, .aviso { transition: opacity .12s ease; transform: none; }
+}
+
+/* ---- pantallas estrechas ---- */
+
+@media (max-width: 40rem) {
+    .dos-columnas { grid-template-columns: 1fr; }
+    main { padding: 1rem; }
+    .cabecera { padding: .9rem 1rem .8rem; }
+    .pestanas { padding: 0 1rem; }
+    .pie { padding: .7rem 1rem; }
+    .ficha, .esqueleto-ficha { grid-template-columns: 1fr; gap: .2rem; }
+    .ficha dt { margin-top: .5rem; }
+    .avisos { top: .6rem; right: .6rem; }
+    /* La franja de la llamada se parte en dos lineas: en movil los cinco elementos
+       en fila dejan lo ultimo dicho en un hilo ilegible. */
+    .en-vivo { flex-wrap: wrap; }
+    .en-vivo-ultimo { flex-basis: 100%; white-space: normal; }
 }

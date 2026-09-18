@@ -23,16 +23,16 @@ Dos reglas, y las dos por lo mismo —no borrar informacion que ya costo obtener
 
 import argparse
 import os
-import shutil
-import sqlite3
 import sys
+from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from nucleo import ajustes, carrier as carrier_mod
+import psycopg
+
+from nucleo import ajustes, almacen, carrier as carrier_mod
 
 RAIZ = os.path.dirname(os.path.abspath(__file__))
-BASE = os.environ.get('VOZ_BD') or os.path.join(RAIZ, 'llamadas.db')
 
 
 def pendientes(con):
@@ -79,23 +79,23 @@ def main():
                         help='Escribe de verdad. Sin esto solo informa.')
     args = parser.parse_args()
 
-    if not os.path.exists(BASE):
-        print(f'\n  No hay base de datos en {BASE}\n')
-        return 1
-
     config = ajustes.cargar()
     carrier = carrier_mod.construir(config.get('carrier'))
     if carrier is None:
         print('\n  No hay carrier configurado: no hay a quien preguntar.\n')
         return 1
 
-    con = sqlite3.connect(BASE, timeout=10)
+    try:
+        con = psycopg.connect(ajustes.dsn(config), connect_timeout=10)
+    except Exception as ex:
+        print(f'\n  No se puede abrir la base: {almacen.texto_seguro(ex)}\n')
+        return 1
     filas = pendientes(con)
     if not filas:
         print('\n  Nada que conciliar: ninguna llamada a medio cerrar.\n')
         return 0
 
-    print(f'\n  Base     : {BASE}')
+    print(f"\n  Base     : {ajustes.bd(config).get('base') or 'vozagente'} (PostgreSQL)")
     print(f'  Proveedor: {carrier.nombre}')
     print(f'  Revisando: {len(filas)} llamada(s)\n')
 
@@ -127,21 +127,27 @@ def main():
         print('  Para hacerlo: python conciliar.py --hazlo\n')
         return 0
 
-    copia = BASE + '.antes-de-conciliar'
-    shutil.copy2(BASE, copia)
+    copia = almacen.volcar_a_fichero(
+        os.path.join(RAIZ, 'llamadas.antes-de-conciliar.sql'))
+    if not copia:
+        print('  [!] No se pudo hacer la copia de seguridad: se sigue igualmente.')
 
     for llamada_id, campos in cambios:
-        asignaciones = ', '.join(f'{k} = ?' for k in campos)
-        con.execute(f'UPDATE llamada SET {asignaciones} WHERE id = ?',
+        asignaciones = ', '.join(f'{k} = %s' for k in campos)
+        con.execute(f'UPDATE llamada SET {asignaciones} WHERE id = %s',
                     tuple(campos.values()) + (llamada_id,))
         con.execute(
             'INSERT INTO evento (llamada_id, creado_en, tipo, detalle) '
-            "VALUES (?, datetime('now'), ?, ?)",
-            (llamada_id, 'conciliado', 'Corregido con lo que dice el proveedor'))
+            'VALUES (%s, %s, %s, %s)',
+            (llamada_id, datetime.now().isoformat(timespec='seconds'),
+             'conciliado', 'Corregido con lo que dice el proveedor'))
     con.commit()
 
     print(f'\n  Hecho: {len(cambios)} llamada(s) corregida(s).')
-    print(f'  Copia de antes: {copia}\n')
+    if copia:
+        print(f'  Copia de antes: {copia}\n')
+    else:
+        print()
     return 0
 
 

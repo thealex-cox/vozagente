@@ -30,7 +30,8 @@ MAX_VUELTAS = 2
 
 NOMBRE_PEDIDO = 'anotar_pedido'
 NOMBRE_NO_LLAMAR = 'registrar_no_llamar'
-TODAS = (NOMBRE_PEDIDO, NOMBRE_NO_LLAMAR)
+NOMBRE_TERMINAR = 'terminar_llamada'
+TODAS = (NOMBRE_PEDIDO, NOMBRE_NO_LLAMAR, NOMBRE_TERMINAR)
 
 DEFINICIONES = [
     {
@@ -96,6 +97,30 @@ DEFINICIONES = [
             'required': [],
         },
     },
+    {
+        'name': NOMBRE_TERMINAR,
+        'description': (
+            'Cuelga la llamada. Usala SOLO cuando ya os habeis despedido y no queda '
+            'nada pendiente: el cliente se ha despedido, o ya has resuelto lo suyo y '
+            'le has dicho adios. Di la despedida en este mismo turno, ANTES de '
+            'llamarla, porque despues de usarla ya no puedes decir nada mas. Si hay '
+            'la menor duda de que el cliente vaya a seguir hablando, no la uses: '
+            'colgarle a alguien que iba a decir algo es peor que una pausa de mas.'
+        ),
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'motivo': {
+                    'type': 'string',
+                    'description': (
+                        'Por que se da por terminada, en pocas palabras: '
+                        '"el cliente se despidio", "pedido anotado y confirmado".'
+                    ),
+                },
+            },
+            'required': [],
+        },
+    },
 ]
 
 # Instrucciones que acompañan a la definición. Van en el prompt porque el esquema
@@ -110,7 +135,13 @@ INSTRUCCIONES_ES = """Sobre `anotar_pedido`, la unica herramienta que tienes:
 Sobre `registrar_no_llamar`:
 - Usala EN CUANTO alguien diga que no quiere mas llamadas, y solo para eso.
 - No preguntes por que ni intentes retenerlo. Discupate, confirma que queda registrado y despidete.
-- Igual que la otra: solo puedes decir que queda registrado despues de que responda que si."""
+- Igual que la otra: solo puedes decir que queda registrado despues de que responda que si.
+
+Sobre `terminar_llamada`:
+- Es la que cuelga. Usala cuando la conversacion ya ha acabado de verdad: os habeis despedido, o ya resolviste lo suyo y le dijiste adios.
+- Di la despedida en el MISMO turno y ANTES de llamarla. Despues de usarla no vas a poder decir nada mas: la linea se cierra en cuanto termina de sonar lo que acabas de decir.
+- No la uses para hacer una pausa ni si el cliente podria seguir hablando. Ante la duda, no cuelgues: preguntale si necesita algo mas y espera.
+- No anuncies que vas a colgar ni digas «voy a cerrar la llamada». Despidete como lo haria una persona y ya esta."""
 
 INSTRUCCIONES_EN = """About `anotar_pedido`, the only tool you have:
 - Use it when the customer asks for something a person has to deal with later. Do not use it for greetings, opening hours, or small talk.
@@ -122,7 +153,13 @@ INSTRUCCIONES_EN = """About `anotar_pedido`, the only tool you have:
 About `registrar_no_llamar`:
 - Use it AS SOON AS someone says they do not want any more calls, and only for that.
 - Do not ask why or try to keep them. Apologise, confirm it is registered, and say goodbye.
-- Same rule as the other one: you may only say it is registered after it answers that it is."""
+- Same rule as the other one: you may only say it is registered after it answers that it is.
+
+About `terminar_llamada`:
+- This is the one that hangs up. Use it when the conversation is genuinely over: you have both said goodbye, or you settled their request and said goodbye.
+- Say the goodbye in the SAME turn and BEFORE calling it. After using it you will not be able to say anything else: the line closes as soon as what you just said finishes playing.
+- Do not use it to pause, or if the customer might still be talking. When in doubt, do not hang up: ask whether they need anything else and wait.
+- Do not announce that you are going to hang up. Say goodbye the way a person would and leave it there."""
 
 
 def nombres_activos(config_negocio=None):
@@ -157,17 +194,17 @@ def instrucciones(config_negocio=None, ingles=False):
 class EjecutorHerramientas:
     """Ejecuta lo que el agente pide, contra la base de esta instalación."""
 
-    # Ninguna termina la conversación por sí sola: apuntar un pedido no es
-    # despedirse, y colgar en cuanto se guarda dejaría al cliente con la palabra en
-    # la boca.
-    TERMINALES = ()
+    # Las que dan la conversación por acabada. Sólo `terminar_llamada`: apuntar un
+    # pedido no es despedirse, y colgar en cuanto se guarda dejaría al cliente con la
+    # palabra en la boca — que es justo el fallo que esta lista existe para no tener.
+    TERMINALES = (NOMBRE_TERMINAR,)
 
     def __init__(self, llamada_id=None, telefono='', activas=None):
         self.llamada_id = llamada_id or None
         self.telefono = telefono or ''
         self._activas = list(activas) if activas is not None else list(TODAS)
         # Lo consulta el puente al terminar de reproducir un turno, para decidir si
-        # cuelga. Con estas herramientas no se activa nunca.
+        # cuelga. Lo levanta `terminar_llamada`, y nada mas.
         self.conversacion_terminada = False
         # Para el panel y para las pruebas: qué apuntó esta llamada.
         self.pedidos = []
@@ -197,9 +234,40 @@ class EjecutorHerramientas:
                               ensure_ascii=False)
 
         argumentos = argumentos or {}
+        if nombre == NOMBRE_TERMINAR:
+            return self._terminar_llamada(argumentos)
         if nombre == NOMBRE_NO_LLAMAR:
             return self._no_llamar(argumentos)
         return self._anotar_pedido(argumentos)
+
+    def _terminar_llamada(self, argumentos):
+        """Da la conversación por acabada. El puente cuelga cuando deje de sonar.
+
+        No cuelga aquí: cortar en este instante se llevaría por delante la despedida
+        que el agente acaba de decir y que todavía está sonando —el audio va por
+        delante de lo que se oye—. Lo único que hace es levantar la bandera que
+        `colgar_si_termino()` consulta cuando el turno termina de reproducirse.
+
+        Queda como evento porque «por qué se cortó esta llamada» es la primera
+        pregunta cuando alguien reclama, y sin esto la respuesta sería un silencio.
+        """
+        self.conversacion_terminada = True
+        motivo = str(argumentos.get('motivo', '')).strip()
+        try:
+            almacen.anotar_evento(self.llamada_id, 'terminada_por_agente',
+                                  motivo or 'El agente dio la conversacion por acabada')
+        except Exception as ex:
+            # Que no quede el evento no puede impedir que se cuelgue: la bandera ya
+            # está levantada y es lo que de verdad cierra la llamada.
+            logger.warning(f'No se pudo anotar el fin de la llamada: {ex}')
+
+        logger.info(f'[llamada {self.llamada_id}] el agente da la llamada por '
+                    f'terminada: {motivo or "sin motivo"}')
+        return json.dumps(
+            {'guardado': True,
+             'mensaje': 'La llamada se cierra en cuanto termine de sonar lo que acabas '
+                        'de decir. No digas nada mas.'},
+            ensure_ascii=False)
 
     def _anotar_pedido(self, argumentos):
         resumen = str(argumentos.get('resumen', '')).strip()

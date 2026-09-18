@@ -14,6 +14,7 @@ from nucleo.herramientas import (  # noqa: F401
     DEFINICIONES,
     MAX_VUELTAS,
     NOMBRE_PEDIDO,
+    NOMBRE_TERMINAR,
     EjecutorHerramientas,
     definiciones_activas,
     instrucciones,

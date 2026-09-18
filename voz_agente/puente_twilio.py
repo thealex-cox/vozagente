@@ -63,7 +63,11 @@ MS_TRAMA = audio.MILISEGUNDOS_TRAMA
 # corto se le corta a media frase a quien duda —«quisiera, este...»— y largo alarga
 # la espera de todas las respuestas. Los demás umbrales de aquí ya eran ajustables;
 # éste se quedó fijo y es justo el que se quiere mover durante una prueba.
-MS_SILENCIO_FIN = int(os.environ.get('VOZ_SILENCIO_FIN_MS', '800'))
+# 800 ms cortaba a quien hace la pausa normal antes de dar un nombre: medido en una
+# llamada real, «...a nombre de» se enviaba a transcribir dos veces seguidas antes de
+# que el cliente dijera el nombre, y el encargo se perdio entero. Un encargo se toma
+# dictando nombres y cantidades, que es justo cuando la gente duda.
+MS_SILENCIO_FIN = int(os.environ.get('VOZ_SILENCIO_FIN_MS', '1200'))
 # Voz mínima para dar un turno por bueno. Bajado de 300 ms tras perder una respuesta
 # real: un «yes» o un «speaking» duran menos, y en una llamada de confirmación ésa es
 # justo la respuesta que se espera. Lo que descarta esto es un golpe o un chasquido de

@@ -10,13 +10,51 @@ aparte en `pruebas/escenarios.py` porque cuestan dinero y tardan.
 
 import os
 import sys
-import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import psycopg  # noqa: E402
+
+from nucleo import ajustes  # noqa: E402
+
+TABLAS = ('turno', 'evento', 'consumo', 'pedido', 'llamada', 'no_llamar')
+
+
+def _preparar_base_de_pruebas():
+    """Deja lista una base aparte, vacia, y devuelve su DSN.
+
+    Con SQLite bastaba un fichero temporal por corrida. En Postgres la base tiene que
+    existir antes de conectarse a ella, asi que se crea una hermana de la de verdad
+    —el mismo servidor y las mismas credenciales, con el sufijo `_pruebas`— y se
+    vacia al empezar. Las pruebas escriben de verdad, y lo que no se puede es que
+    escriban en la base de la demo.
+    """
+    datos = dict(ajustes.bd(ajustes.cargar()))
+    real = (datos.get('base') or 'vozagente').strip()
+    datos['base'] = f'{real}_pruebas'
+    comun = (f"host={datos.get('host') or 'localhost'} "
+             f"port={datos.get('puerto') or 5432} "
+             f"user={datos.get('usuario') or 'postgres'} "
+             f"password={datos.get('clave') or ''}")
+
+    # `autocommit` porque CREATE DATABASE no puede ir dentro de una transaccion.
+    with psycopg.connect(f'{comun} dbname=postgres', connect_timeout=10,
+                         autocommit=True) as con:
+        existe = con.execute('SELECT 1 FROM pg_database WHERE datname = %s',
+                             (datos['base'],)).fetchone()
+        if not existe:
+            con.execute(f'CREATE DATABASE "{datos["base"]}"')
+
+    dsn = f'{comun} dbname={datos["base"]}'
+    with psycopg.connect(dsn, connect_timeout=10, autocommit=True) as con:
+        for tabla in TABLAS:
+            con.execute(f'DROP TABLE IF EXISTS {tabla} CASCADE')
+    return dsn
+
+
 # Cada corrida con su propia base, para no ensuciar la de verdad ni depender de ella.
-os.environ['VOZ_BD'] = os.path.join(tempfile.mkdtemp(prefix='voz_test_'), 'pruebas.db')
+os.environ['VOZ_BD'] = _preparar_base_de_pruebas()
 
 import conciliar  # noqa: E402
 from nucleo import almacen, negocio, telefono  # noqa: E402
@@ -122,6 +160,105 @@ class Guiones(unittest.TestCase):
                 self.assertNotIn('Anthropic', contexto)
 
 
+class Colgar(unittest.TestCase):
+    """La herramienta que cierra la llamada, y sobre todo cuando NO cierra."""
+
+    def setUp(self):
+        self.llamada = almacen.crear_llamada(
+            'entrante', '+593999000111', estado='en curso', carrier='prueba',
+            es_prueba=True)
+        self.ejecutor = EjecutorHerramientas(self.llamada, telefono='+593999000111')
+
+    def _terminar(self, **kwargs):
+        import json
+        return json.loads(self.ejecutor.ejecutar('terminar_llamada', kwargs))
+
+    def test_al_empezar_nadie_ha_colgado(self):
+        # Es la condicion que consulta el puente: si naciera en True, colgaria en
+        # cuanto el agente terminara de saludar.
+        self.assertFalse(self.ejecutor.conversacion_terminada)
+
+    def test_terminar_levanta_la_bandera_que_cuelga(self):
+        self.assertTrue(self._terminar(motivo='el cliente se despidio')['guardado'])
+        self.assertTrue(self.ejecutor.conversacion_terminada)
+
+    def test_anotar_un_pedido_no_cuelga(self):
+        # Colgar al guardar dejaria al cliente con la palabra en la boca, justo
+        # cuando espera que le confirmen lo que acaba de pedir.
+        self.ejecutor.ejecutar('anotar_pedido', {'resumen': 'Dos empanadas'})
+        self.assertFalse(self.ejecutor.conversacion_terminada)
+
+    def test_pedir_no_llamar_tampoco_cuelga(self):
+        # Hay que poder disculparse y despedirse despues de registrarlo.
+        self.ejecutor.ejecutar('registrar_no_llamar', {'motivo': 'no me interesa'})
+        self.assertFalse(self.ejecutor.conversacion_terminada)
+
+    def test_queda_registrado_por_que_se_colgo(self):
+        # «Por que se corto esta llamada» es la primera pregunta de una reclamacion.
+        self._terminar(motivo='pedido anotado y confirmado')
+        tipos = [e['tipo'] for e in almacen.eventos(self.llamada)]
+        self.assertIn('terminada_por_agente', tipos)
+
+    def test_un_negocio_puede_quedarse_sin_la_herramienta(self):
+        # Si no esta activa no puede colgar, aunque el modelo la invente.
+        acotado = EjecutorHerramientas(self.llamada, telefono='+1',
+                                       activas=['anotar_pedido'])
+        import json
+        salida = json.loads(acotado.ejecutar('terminar_llamada', {}))
+        self.assertFalse(salida['guardado'])
+        self.assertFalse(acotado.conversacion_terminada)
+
+    def test_sin_llamada_no_se_cuelga_por_las_bravas(self):
+        # La demo por navegador sin ficha: que no tenga donde anotar el motivo no
+        # puede dejar la bandera a medias.
+        suelto = EjecutorHerramientas(None)
+        import json
+        salida = json.loads(suelto.ejecutar('terminar_llamada', {}))
+        self.assertFalse(salida['guardado'])
+        self.assertFalse(suelto.conversacion_terminada)
+
+
+class CuandoCuelgaElPuente(unittest.TestCase):
+    """Que el puente cuelgue al acabar, y sobre todo que no corte la despedida."""
+
+    def _probar(self, terminada, hablando):
+        import asyncio
+        import types
+        import voz_agente.puente_twilio as puente
+
+        class WSFalso:
+            def __init__(self):
+                self.cerrado = False
+
+            async def close(self):
+                self.cerrado = True
+
+        ejecutor = EjecutorHerramientas(1)
+        ejecutor.conversacion_terminada = terminada
+        estado = types.SimpleNamespace(herramientas=ejecutor, hablando_agente=hablando,
+                                       colgado=False, call_sid='TEST')
+        ws = WSFalso()
+        # La espera real existe para que acabe de sonar la despedida; aqui solo
+        # estorbaria, asi que se acorta y se deja como estaba.
+        antes = (puente.ADELANTO_AUDIO, puente.MARGEN_FIN_AUDIO)
+        puente.ADELANTO_AUDIO, puente.MARGEN_FIN_AUDIO = 0.01, 0.01
+        try:
+            asyncio.run(puente.colgar_si_termino(ws, estado))
+        finally:
+            puente.ADELANTO_AUDIO, puente.MARGEN_FIN_AUDIO = antes
+        return ws.cerrado
+
+    def test_sin_terminar_no_cuelga(self):
+        self.assertFalse(self._probar(terminada=False, hablando=False))
+
+    def test_no_cuelga_mientras_el_agente_habla(self):
+        # Es la condicion que impide colgarle a alguien a media despedida.
+        self.assertFalse(self._probar(terminada=True, hablando=True))
+
+    def test_cuelga_cuando_termino_y_ya_callo(self):
+        self.assertTrue(self._probar(terminada=True, hablando=False))
+
+
 class Pedidos(unittest.TestCase):
 
     def setUp(self):
@@ -214,9 +351,11 @@ class Registro(unittest.TestCase):
         self.assertEqual(turnos[0]['texto'], 'Corregida')
 
     def test_el_esquema_se_rehace_si_la_base_desaparece(self):
-        # Borrar la base con el servicio en marcha dejaba el proceso creyendo que las
-        # tablas existian, y a partir de ahi todo fallaba en silencio.
-        os.remove(almacen.RUTA)
+        # Borrar las tablas con el servicio en marcha dejaba el proceso creyendo que
+        # existian, y a partir de ahi todo fallaba en silencio.
+        with psycopg.connect(os.environ['VOZ_BD'], autocommit=True) as con:
+            for tabla in TABLAS:
+                con.execute(f'DROP TABLE IF EXISTS {tabla} CASCADE')
         self.assertIsNotNone(almacen.crear_llamada('demo', 'x', carrier='p'))
 
 

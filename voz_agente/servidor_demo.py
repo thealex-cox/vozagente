@@ -218,6 +218,22 @@ async def conversacion(ws: WebSocket):
                 await procesar_turno(ws, agente, audio, carpeta, idioma, bitacora,
                                      vocabulario=negocio_cfg.vocabulario(datos_negocio))
 
+            # El agente se ha despedido y ha dado la conversacion por acabada. Por
+            # telefono esto cuelga; aqui no hay linea que cortar, asi que se avisa al
+            # navegador y se cierra la sesion. Se hace DESPUES del turno para que la
+            # despedida llegue entera: cerrar antes se la llevaria por delante, que
+            # es el mismo cuidado que tiene el puente al colgar.
+            if herramientas.conversacion_terminada:
+                # Tipo propio y no `fin`, que en este protocolo ya significa «fin de
+                # turno» y el navegador usa para reabrir el microfono.
+                try:
+                    await ws.send_json({'tipo': 'terminada',
+                                        'mensaje': 'El agente dio la conversacion por '
+                                                   'terminada.'})
+                except Exception:
+                    pass
+                break
+
     except WebSocketDisconnect:
         logger.info('Conexion cerrada por el navegador')
     except Exception as ex:

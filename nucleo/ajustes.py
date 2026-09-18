@@ -1,9 +1,18 @@
-"""Configuración del servicio: un solo fichero JSON, sin base de datos ni panel.
+"""Configuración del servicio: PostgreSQL manda, `config.json` es el espejo.
 
-Un producto que atiende a un negocio no necesita el aparato de configuración de
-skytech —tabla, formulario, caché, cifrado— y arrastrarlo habría sido la mitad del
-trabajo de este proyecto. Aquí la instalación entera se describe en `config.json`, se
-edita con cualquier editor y se versiona a mano.
+Los ajustes viven en la tabla `ajuste`, una fila por sección, y se editan desde el
+panel o desde pgAdmin. `config.json` sigue existiendo y cumple **dos** papeles que la
+base no puede cumplir:
+
+- Guarda la sección `bd`, que es cómo se llega a la base. No puede estar dentro de
+  ella misma.
+- Es la copia de seguridad. Si Postgres no contesta, el servicio arranca con lo
+  último que se guardó en el fichero y lo dice arriba del panel, en vez de quedarse
+  sin atender llamadas. Un agente telefónico que depende de que una base esté viva
+  para descolgar es un agente peor.
+
+Al guardar se escriben los dos: primero la base, que es la fuente, y después el
+espejo.
 
 **El motor de voz lee su configuración de variables de entorno** (`CARTESIA_API_KEY`,
 `VOZ_STREAM_TOKEN`, …), que es como venía de skytech. En vez de tocarlo para que lea
@@ -18,6 +27,7 @@ el que documenta la forma.
 import json
 import logging
 import os
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +35,140 @@ RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RUTA_CONFIG = os.environ.get('VOZ_CONFIG') or os.path.join(RAIZ, 'config.json')
 
 _cache = None
+
+# Verdadero cuando la última lectura no pudo hablar con la base y se tiró del
+# fichero. Lo consulta `revisar()` para decirlo arriba del panel: si no, el servicio
+# funcionaría con una copia vieja y nadie se enteraría hasta encontrar un ajuste que
+# no cuadra.
+_desde_respaldo = False
+
+# La seccion `bd` NO se guarda en la base: es la que dice como llegar a ella. Vive
+# solo en config.json y es lo unico que hace falta para arrancar.
+SECCION_CONEXION = 'bd'
+
+ESQUEMA_AJUSTES = """
+CREATE TABLE IF NOT EXISTS ajuste (
+    seccion TEXT PRIMARY KEY,
+    datos TEXT NOT NULL,
+    actualizado_en TEXT NOT NULL
+);
+"""
+
+
+def _conexion_bd(datos_bd):
+    """Una conexión para leer o escribir ajustes, o None si no se puede.
+
+    No usa `nucleo.almacen`: ese módulo importa éste, y cerrar el círculo dejaría el
+    arranque dependiendo del orden de los imports. Son cuatro líneas de psycopg y
+    evitan un ciclo que costaría mucho más explicar.
+    """
+    try:
+        import psycopg
+    except ImportError:
+        return None
+    host = (datos_bd.get('host') or 'localhost').strip()
+    puerto = datos_bd.get('puerto') or 5432
+    base = (datos_bd.get('base') or 'vozagente').strip()
+    usuario = (datos_bd.get('usuario') or 'postgres').strip()
+    clave = datos_bd.get('clave') or ''
+    return psycopg.connect(
+        f'host={host} port={puerto} dbname={base} user={usuario} password={clave}',
+        connect_timeout=3)
+
+
+# Cuando la base falla, el instante en que dejamos de reintentar. `cargar(recargar=
+# True)` se ejecuta **en cada llamada entrante**, y con Postgres caido cada intento
+# costaba los 5 s enteros del timeout: la llamada se quedaba muda esperando y el
+# proveedor la daba por perdida. Tras un fallo se deja de preguntar un rato y se tira
+# del espejo, que es instantaneo.
+_bd_en_pausa_hasta = 0.0
+SEGUNDOS_PAUSA_BD = 30
+
+
+def _leer_de_bd(datos_bd):
+    """Las secciones guardadas en la base. `None` si no se pudo hablar con ella.
+
+    `None` y `{}` no significan lo mismo, y por eso se distinguen: una base vacía es
+    una instalación nueva y se sigue adelante con el fichero; una base inalcanzable
+    es un fallo que hay que decir en voz alta.
+    """
+    global _bd_en_pausa_hasta
+    if time.monotonic() < _bd_en_pausa_hasta:
+        return None
+
+    try:
+        con = _conexion_bd(datos_bd)
+        if con is None:
+            return None
+        try:
+            with con.cursor() as cur:
+                cur.execute(ESQUEMA_AJUSTES)
+                con.commit()
+                cur.execute('SELECT seccion, datos FROM ajuste')
+                filas = cur.fetchall()
+        finally:
+            con.close()
+    except Exception as ex:
+        _bd_en_pausa_hasta = time.monotonic() + SEGUNDOS_PAUSA_BD
+        logger.warning('No se pudieron leer los ajustes de la base (no se reintenta '
+                       'en %ss): %s', SEGUNDOS_PAUSA_BD,
+                       str(ex).encode('ascii', 'replace').decode())
+        return None
+
+    _bd_en_pausa_hasta = 0.0
+
+    fuera = {}
+    for seccion_nombre, crudo in filas:
+        try:
+            fuera[seccion_nombre] = json.loads(crudo)
+        except ValueError:
+            logger.warning(f'La seccion «{seccion_nombre}» de la base no es JSON valido')
+    return fuera
+
+
+def _escribir_en_bd(datos_bd, config):
+    """Vuelca las secciones a la base. Devuelve False si no se pudo."""
+    from datetime import datetime
+    ahora = datetime.now().isoformat(timespec='seconds')
+    try:
+        con = _conexion_bd(datos_bd)
+        if con is None:
+            return False
+        try:
+            with con.cursor() as cur:
+                cur.execute(ESQUEMA_AJUSTES)
+                for nombre, valores in config.items():
+                    if nombre == SECCION_CONEXION:
+                        continue
+                    cur.execute(
+                        'INSERT INTO ajuste (seccion, datos, actualizado_en) '
+                        'VALUES (%s, %s, %s) ON CONFLICT (seccion) DO UPDATE SET '
+                        'datos = excluded.datos, '
+                        'actualizado_en = excluded.actualizado_en',
+                        (nombre, json.dumps(valores, ensure_ascii=False), ahora))
+            con.commit()
+        finally:
+            con.close()
+        return True
+    except Exception as ex:
+        logger.warning('No se pudieron guardar los ajustes en la base: %s',
+                       str(ex).encode('ascii', 'replace').decode())
+        return False
+
+
+def desde_respaldo():
+    """Si la última carga tuvo que tirar del fichero porque la base no contestó."""
+    return _desde_respaldo
+
+
+def volcar_a_bd(config=None):
+    """Sube a la base lo que hay en `config.json`. Devuelve False si no se pudo.
+
+    Es la migración inicial, y se puede repetir sin miedo: reescribe cada sección con
+    lo que tenga el fichero. Quien la llame dos veces obtiene el mismo resultado.
+    """
+    datos = config if config is not None else cargar(recargar=True)
+    return _escribir_en_bd(datos.get(SECCION_CONEXION) or {}, datos)
 
 
 class ConfigError(Exception):
@@ -57,6 +201,26 @@ def cargar(ruta=None, recargar=False):
         # línea ahorra la búsqueda a ojo en un fichero con texto largo dentro.
         raise ConfigError(f'{destino} no es JSON valido: {ex}')
 
+    # Lo que hay en la base manda sobre lo que hay en el fichero. El fichero deja de
+    # ser la fuente y pasa a ser dos cosas: de donde sale `bd` —lo unico que hace
+    # falta para llegar a la base— y el espejo que se usa si la base no contesta.
+    global _desde_respaldo
+    guardadas = _leer_de_bd(datos.get(SECCION_CONEXION) or {})
+    _desde_respaldo = guardadas is None
+    if guardadas:
+        for nombre, valores in guardadas.items():
+            if nombre == SECCION_CONEXION:
+                continue
+            if isinstance(valores, dict) and isinstance(datos.get(nombre), dict):
+                # Mezcla y no sustitucion: una clave que el panel todavia no conoce
+                # y solo esta en el fichero no puede desaparecer por no estar en la
+                # base.
+                fusion = dict(datos[nombre])
+                fusion.update(valores)
+                datos[nombre] = fusion
+            else:
+                datos[nombre] = valores
+
     if ruta is None:
         _cache = datos
     return datos
@@ -86,6 +250,30 @@ def web(config=None):
 
 def llamadas(config=None):
     return seccion('llamadas', config)
+
+
+def bd(config=None):
+    return seccion('bd', config)
+
+
+def dsn(config=None):
+    """La cadena de conexion a PostgreSQL.
+
+    `VOZ_BD` manda sobre `config.json`, y es lo que usan las pruebas para trabajar
+    sobre una base desechable sin tocar la de verdad. Antes apuntaba a un fichero
+    SQLite; ahora es un DSN, que es el mismo papel con otro motor.
+    """
+    del_entorno = (os.environ.get('VOZ_BD') or '').strip()
+    if del_entorno:
+        return del_entorno
+    datos = bd(config)
+    host = (datos.get('host') or 'localhost').strip()
+    puerto = datos.get('puerto') or 5432
+    base = (datos.get('base') or 'vozagente').strip()
+    usuario = (datos.get('usuario') or 'postgres').strip()
+    clave = datos.get('clave') or ''
+    return (f'host={host} port={puerto} dbname={base} '
+            f'user={usuario} password={clave}')
 
 
 def url_publica(config=None):
@@ -155,6 +343,15 @@ def revisar(config=None):
     datos = config if config is not None else cargar()
     bloqueos, telefonia, avisos = [], [], []
 
+    # Un aviso y no un bloqueo: con el espejo del fichero el agente atiende igual, y
+    # dejar la demo sin llamadas porque Postgres no arranca seria cambiar un
+    # problema pequeno por uno grande. Pero hay que decirlo, o se estaria trabajando
+    # sobre una copia vieja sin saberlo.
+    if desde_respaldo():
+        avisos.append('No se pudo leer la base: se esta usando la copia de '
+                      'config.json. Lo que guardes ahora puede no cuadrar con lo '
+                      'que hay en Postgres.')
+
     if not negocio(datos).get('nombre'):
         bloqueos.append('El negocio no tiene nombre: el agente no sabe quien es.')
     if not ia(datos).get('anthropic_api_key'):
@@ -212,6 +409,17 @@ def guardar(cambios):
         else:
             fusionado[seccion] = valores
 
+    # Primero la base, que es la fuente. Si falla se sigue igualmente y se escribe el
+    # fichero: perder un cambio recien hecho por no poder hablar con Postgres seria
+    # peor que quedarse con las dos copias descuadradas un rato, y la siguiente
+    # carga lo dice arriba del panel.
+    en_bd = _escribir_en_bd(fusionado.get(SECCION_CONEXION) or {}, fusionado)
+    if not en_bd:
+        logger.warning('Los ajustes se guardaron solo en el fichero: la base no '
+                       'contesto')
+
+    # El espejo. Es lo que permite que el agente siga atendiendo llamadas si la base
+    # no arranca: sin el, quedarse sin Postgres seria quedarse sin servicio.
     temporal = f'{RUTA_CONFIG}.tmp'
     with open(temporal, 'w', encoding='utf-8', newline='\n') as archivo:
         json.dump(fusionado, archivo, indent=2, ensure_ascii=False)
