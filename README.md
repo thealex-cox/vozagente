@@ -21,9 +21,13 @@ copy config.example.json config.json            # Linux: cp
 ```
 
 Hace falta un **PostgreSQL** al que conectarse (vale el local de toda la vida) y poner
-sus datos en la sección `bd` de `config.json`. La base se crea sola la primera vez que
-se pasa `migrar_a_postgres.py`; si se prefiere a mano, basta un `CREATE DATABASE
-vozagente` desde pgAdmin y el resto —las tablas— lo monta el servicio al arrancar.
+sus datos en la sección `bd` de `config.json`. **La base y las tablas se crean solas**
+al arrancar: no hay que preparar nada a mano, sólo que Postgres esté levantado y que
+el usuario de `bd` pueda crear bases.
+
+Si no puede, el servicio lo dice como bloqueo y no lo esconde. Es a propósito: sin
+base el agente conversaría igual y no guardaría ni un pedido, y eso no se manifiesta
+como un error sino como una pestaña de Pedidos vacía que parece normal.
 
 Quien venga de una versión anterior, que tenía el registro en un `llamadas.db` de
 SQLite, lo pasa con:
@@ -46,8 +50,17 @@ y se abre <http://localhost:8600/panel>. Ahí se pone todo: el negocio, los guio
 las claves de los proveedores y la telefonía. Arriba se ve, en todo momento, qué
 impediría que una llamada sonara bien.
 
-Si prefieres el fichero, `config.json` sigue siendo la única fuente y se puede editar
-a mano. `python servidor.py --revisar` comprueba la configuración y sale sin arrancar.
+**Los ajustes viven en PostgreSQL**, en la tabla `ajuste`, una fila por sección.
+`config.json` sigue existiendo y hace dos cosas que la base no puede hacer: guarda la
+sección `bd` —cómo se llega a la base, que no puede estar dentro de ella— y es la copia
+de seguridad. Si Postgres no contesta, el servicio arranca con lo último guardado en el
+fichero y lo dice en ámbar arriba del panel, en vez de quedarse sin atender llamadas.
+
+Al guardar desde el panel se escriben los dos: primero la base, después el espejo.
+Editar `config.json` a mano sigue funcionando para la sección `bd`; para el resto, lo
+que mande la base gana en la siguiente carga.
+
+`python servidor.py --revisar` comprueba la configuración y sale sin arrancar.
 
 ## El panel
 

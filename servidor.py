@@ -45,7 +45,23 @@ def preparar():
         raise SystemExit(2)
 
     ajustes.aplicar_entorno(config)
+
+    # Antes de revisar nada: si la base no existe se crea. Una instalacion nueva que
+    # arranca sin base conversa igual y no guarda ni un pedido, y eso no sale como un
+    # error sino como una pestaña de Pedidos vacia que parece normal.
+    base_lista, mensaje_base = ajustes.asegurar_base(config)
+    if mensaje_base:
+        print(f'\n  {mensaje_base}')
+    if base_lista:
+        # Se recarga porque la base puede acabar de nacer: los ajustes que hubiera en
+        # ella no se leyeron en la carga anterior.
+        config = ajustes.cargar(recargar=True)
+        ajustes.aplicar_entorno(config)
+
     bloqueos, telefonia, avisos = ajustes.revisar(config)
+    if not base_lista:
+        bloqueos.append('No hay base de datos: el agente hablaria, pero ni las '
+                        'llamadas ni los pedidos quedarian guardados.')
 
     nombre = ajustes.negocio(config).get('nombre') or '(sin nombre)'
     print(f'\n  Negocio: {nombre}')

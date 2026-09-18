@@ -18,7 +18,8 @@
     "space": "TU-SPACE.signalwire.com",
     "project_id": "",
     "api_token": "",
-    "numero_origen": ""
+    "numero_origen": "",
+    "numero_entrante": ""
   },
   "ia": {
     "anthropic_api_key": "",

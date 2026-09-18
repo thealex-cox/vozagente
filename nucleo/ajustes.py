@@ -161,6 +161,46 @@ def desde_respaldo():
     return _desde_respaldo
 
 
+def asegurar_base(config=None):
+    """Crea la base si no existe. Devuelve (hecho, mensaje).
+
+    Sin esto, una instalación nueva arranca, conversa, toma un encargo y **no guarda
+    nada**: el registro nunca levanta hacia fuera, así que el fallo sale como unos
+    avisos en el log y una pestaña de Pedidos vacía que parece normal. Se descubre
+    cuando alguien pregunta por el encargo que el cliente dio por hecho.
+
+    `CREATE DATABASE` no puede ir dentro de una transacción, de ahí el `autocommit`.
+    """
+    datos = (config if config is not None else cargar()).get(SECCION_CONEXION) or {}
+    base = (datos.get('base') or 'vozagente').strip()
+    try:
+        import psycopg
+    except ImportError:
+        return False, 'Falta el driver: pip install "psycopg[binary]"'
+
+    comun = (f"host={datos.get('host') or 'localhost'} "
+             f"port={datos.get('puerto') or 5432} "
+             f"user={datos.get('usuario') or 'postgres'} "
+             f"password={datos.get('clave') or ''}")
+    try:
+        with psycopg.connect(f'{comun} dbname=postgres', connect_timeout=5,
+                             autocommit=True) as con:
+            existe = con.execute('SELECT 1 FROM pg_database WHERE datname = %s',
+                                 (base,)).fetchone()
+            global _bd_en_pausa_hasta
+            if existe:
+                return True, ''
+            con.execute(f'CREATE DATABASE "{base}"')
+            # La base acaba de nacer, asi que el intento fallido de hace un momento
+            # ya no dice nada: sin esto, la pausa de reintento haria que el arranque
+            # creara la base y en la linea siguiente avisara de que no puede leerla.
+            _bd_en_pausa_hasta = 0.0
+            return True, f'Base «{base}» creada en PostgreSQL.'
+    except Exception as ex:
+        limpio = str(ex).encode('ascii', 'replace').decode().split('\n')[0]
+        return False, f'No se pudo preparar la base «{base}»: {limpio}'
+
+
 def volcar_a_bd(config=None):
     """Sube a la base lo que hay en `config.json`. Devuelve False si no se pudo.
 
