@@ -48,8 +48,15 @@ DEFINICIONES = [
                 'resumen': {
                     'type': 'string',
                     'description': (
+                        # Sin ejemplo a proposito: el que habia era de una
+                        # panaderia, y el mismo servicio atiende a una clinica y a
+                        # un taller. Un ejemplo de tortas en el esquema empuja al
+                        # modelo a redactar como si vendiera tortas, y quien tiene
+                        # que dar el ejemplo es el guion del negocio, que si sabe a
+                        # que se dedica.
                         'Que pide, en una frase y con las palabras del cliente. '
-                        'Ejemplo: "Torta de tres leches para veinte personas".'
+                        'Concreto y completo: lo va a leer una persona que no '
+                        'escucho la llamada.'
                     ),
                 },
                 'nombre': {

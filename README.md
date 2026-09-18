@@ -4,8 +4,9 @@ Un asistente telefónico que atiende y hace llamadas por un negocio. Contesta al
 teléfono, entiende lo que le dicen, responde con voz y deja la conversación
 registrada.
 
-Un servicio, un negocio. Se describe entero en `config.json` —quién es, qué vende,
-qué debe decir— y no hace falta tocar código para cambiarlo.
+Un servicio, un negocio. Se describe entero en la configuración —quién es, qué vende,
+qué debe decir— y no hace falta tocar código para cambiarlo: en `ejemplos/` hay una
+panadería y una clínica dental funcionando sobre el mismo código.
 
 ```
 python servidor.py            # atiende llamadas y sirve la demo
@@ -62,6 +63,29 @@ que mande la base gana en la siguiente carga.
 
 `python servidor.py --revisar` comprueba la configuración y sale sin arrancar.
 
+## Montarlo para otro negocio
+
+**El código no sabe de panaderías.** Sabe atender un teléfono, entender lo que le
+dicen y apuntar lo que le piden; quién es, qué vende y qué debe decir entra entero por
+configuración. En `ejemplos/` hay negocios ya escritos para partir de uno:
+
+```bash
+python usar_ejemplo.py                    # los lista
+python usar_ejemplo.py clinica --hazlo    # lo aplica
+```
+
+Sólo tocan lo que describe al negocio —nombre, idioma, vocabulario, descripción,
+guiones y franja horaria—. **No tocan claves, telefonía, URL ni la conexión a la
+base**: eso es de la instalación, y sobrescribirlo al probar otro ejemplo dejaría el
+servicio sin poder llamar.
+
+Los dos que hay no son adorno: `panaderia` toma encargos y `clinica` toma solicitudes
+de cita **sin confirmar hora** y deriva a una persona si quien llama dice que tiene
+dolor. Mismo código, comportamientos distintos, y la diferencia está toda en el guion.
+
+Para un negocio nuevo, lo más rápido es copiar el ejemplo más parecido, cambiarle la
+descripción y el guion, y afinar desde el panel — que se relee en cada llamada.
+
 ## El panel
 
 <http://localhost:8600/panel>
@@ -99,9 +123,15 @@ Sin `web.url_publica` no hay llamadas (pero la demo por navegador funciona).
 ```
 
 Los primeros no llaman a ningun proveedor: comprueban a que numero se marca, a que
-hora, que sabe el agente y que puede guardar. Los escenarios someten al agente a las
-conversaciones que rompen una demo —que niegue ser una maquina, que se invente un
-precio, que diga que anoto algo sin anotarlo— y cuestan unos centimos por pasada.
+hora, que sabe el agente y que puede guardar. Son independientes del negocio y pasan
+igual con cualquier ejemplo cargado.
+
+Los escenarios someten al agente a las conversaciones que rompen una demo —que niegue
+ser una maquina, que se invente un precio, que diga que anoto algo sin anotarlo— y
+cuestan unos centimos por pasada. **Estan escritos para la panaderia**: preguntan por
+tortas y por porciones, asi que con otro negocio cargado fallan por hablar de lo que
+no es. Al montar un cliente nuevo hay que reescribirles las frases; lo que se comprueba
+—las tres trampas de arriba— vale para cualquier sector.
 
 Para la reunion, ver `DEMO.md`.
 
@@ -283,6 +313,8 @@ servidor.py      arranca todo (webhooks + puente de audio + demo)
 llamar.py        hace una llamada desde la terminal
 config.json      el negocio, las claves, las URL y la base. No se versiona.
 migrar_a_postgres.py  pasa un llamadas.db antiguo a PostgreSQL. Se usa una vez.
+usar_ejemplo.py  carga uno de los negocios de ejemplos/
+ejemplos/        negocios ya escritos: panaderia, clinica. El codigo no sabe de ninguno.
 
 nucleo/          lo propio de este producto
   ajustes.py     lee y escribe config.json
